@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import {
-  addCartItem,
   createTraderProduct,
   fetchCartItems,
   fetchMarketplaceTraders,
@@ -13,6 +13,7 @@ import {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 const FILE_BASE_URL = API_BASE_URL.replace(/\/api\/?$/, '');
+const router = useRouter();
 const activeTab = ref('add-product');
 
 const form = reactive({
@@ -97,14 +98,21 @@ async function loadOrders() {
   }
 }
 
-async function addProductToCart(productId) {
-  try {
-    await addCartItem({ productId, quantity: 1 });
-    feedback.value = 'Product added to cart.';
-    await loadCart();
-  } catch (error) {
-    feedback.value = error.message;
+function goToBrowseProducts(traderId) {
+  const query = traderId ? { traderId: String(traderId) } : {};
+  router.push({ name: 'trader-browse-products', query });
+}
+
+function messageTrader(trader) {
+  const rawNumber = String(trader.contactNumber || '').replace(/\D/g, '');
+  if (!rawNumber) {
+    feedback.value = 'This trader has no contact number yet.';
+    return;
   }
+
+  const international = rawNumber.startsWith('0') ? `63${rawNumber.slice(1)}` : rawNumber;
+  const message = encodeURIComponent(`Hello ${trader.name || 'Trader'}, I want to ask about your products.`);
+  window.open(`https://wa.me/${international}?text=${message}`, '_blank', 'noopener,noreferrer');
 }
 
 async function removeItemFromCart(itemId) {
@@ -246,30 +254,14 @@ onMounted(async () => {
           <p class="meta">Contact: {{ trader.contactNumber || 'N/A' }}</p>
           <p class="meta">Address: {{ trader.businessAddress || 'N/A' }}</p>
 
-          <div class="products" v-if="trader.products.length">
-            <article v-for="product in trader.products" :key="product.id" class="product-card">
-              <img
-                v-if="product.productImagePath"
-                :src="toImageUrl(product.productImagePath)"
-                alt="Product"
-              />
-              <div>
-                <h4>{{ product.productName }}</h4>
-                <p>Size: {{ product.size }}</p>
-                <p>Length: {{ product.lengthCm ?? 'N/A' }} cm</p>
-                <p>Stock: {{ product.stockQuantity }}</p>
-                <button
-                  type="button"
-                  class="mini-btn"
-                  :disabled="product.stockQuantity <= 0"
-                  @click="addProductToCart(product.id)"
-                >
-                  {{ product.stockQuantity <= 0 ? 'Out of Stock' : 'Add to Cart' }}
-                </button>
-              </div>
-            </article>
+          <div class="actions">
+            <button type="button" class="mini-btn" @click="goToBrowseProducts(trader.traderId)">
+              View Products
+            </button>
+            <button type="button" class="mini-btn message" @click="messageTrader(trader)">
+              Message
+            </button>
           </div>
-          <p v-else class="muted">No products yet.</p>
         </article>
       </div>
     </section>
@@ -494,6 +486,13 @@ button:disabled {
   font-size: 0.9rem;
 }
 
+.actions {
+  margin-top: 0.7rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .mini-btn {
   margin-top: 0.5rem;
   border: 1px solid rgba(133, 229, 197, 0.55);
@@ -512,6 +511,10 @@ button:disabled {
 
 .mini-btn.danger {
   background: #9a3346;
+}
+
+.mini-btn.message {
+  background: #5f58c7;
 }
 
 .checkout-btn {

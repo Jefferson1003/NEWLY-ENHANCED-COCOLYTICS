@@ -10,6 +10,7 @@ import TraderDashboard from './pages/trader/TraderDashboard.vue';
 import TraderHomePage from './pages/trader/TraderHomePage.vue';
 import TraderProfilePage from './pages/trader/TraderProfilePage.vue';
 import TraderMarketplacePage from './pages/trader/TraderMarketplacePage.vue';
+import TraderBrowseProductsPage from './pages/trader/TraderBrowseProductsPage.vue';
 import { getUser, isLoggedIn } from './services/session';
 
 const router = createRouter({
@@ -42,6 +43,11 @@ const router = createRouter({
         { path: 'dashboard', name: 'trader-dashboard', component: TraderHomePage },
         { path: 'profile', name: 'trader-profile', component: TraderProfilePage },
         { path: 'marketplace', name: 'trader-marketplace', component: TraderMarketplacePage },
+        {
+          path: 'browse-products',
+          name: 'trader-browse-products',
+          component: TraderBrowseProductsPage,
+        },
       ],
     },
   ],
