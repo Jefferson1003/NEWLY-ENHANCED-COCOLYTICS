@@ -56,7 +56,9 @@ onMounted(loadProfile);
 <template>
   <section class="trader-layout">
     <TraderSidebar
+      :user-name="profile?.profileName || profile?.fullName || ''"
       :user-email="profile?.email || ''"
+      :profile-image-path="profile?.profileImagePath || ''"
       :is-open="sidebarOpen"
       @logout="requestLogout"
       @close="closeSidebar"

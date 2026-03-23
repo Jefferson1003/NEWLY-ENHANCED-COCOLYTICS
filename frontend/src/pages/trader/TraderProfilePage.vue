@@ -1,6 +1,14 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue';
-import { fetchTraderProfile, updateTraderProfile } from '../../services/api';
+import {
+  fetchTraderProfile,
+  updateTraderProfile,
+  uploadTraderProfileImage,
+} from '../../services/api';
+import { getToken, saveSession } from '../../services/session';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+const FILE_BASE_URL = API_BASE_URL.replace(/\/api\/?$/, '');
 
 const form = reactive({
   name: '',
@@ -11,6 +19,14 @@ const form = reactive({
 const loading = ref(false);
 const saving = ref(false);
 const feedback = ref('');
+const profileImageFile = ref(null);
+const profileImagePreview = ref('');
+
+function toImageUrl(path) {
+  if (!path) return '';
+  if (path.startsWith('http')) return path;
+  return `${FILE_BASE_URL}${path}`;
+}
 
 async function loadProfile() {
   loading.value = true;
@@ -21,6 +37,7 @@ async function loadProfile() {
     form.description = data.user.profileDescription || '';
     form.contactNumber = data.user.contactNumber || '';
     form.businessAddress = data.user.businessAddress || '';
+    profileImagePreview.value = toImageUrl(data.user.profileImagePath || '');
   } catch (error) {
     feedback.value = error.message;
   } finally {
@@ -28,12 +45,34 @@ async function loadProfile() {
   }
 }
 
+function onSelectProfileImage(event) {
+  const [file] = event.target.files || [];
+  profileImageFile.value = file || null;
+
+  if (file) {
+    profileImagePreview.value = URL.createObjectURL(file);
+  }
+}
+
 async function submitProfile() {
   saving.value = true;
   feedback.value = '';
   try {
-    const response = await updateTraderProfile({ ...form });
-    feedback.value = response.message || 'Profile updated.';
+    const profileResponse = await updateTraderProfile({ ...form });
+    let latestUser = profileResponse.user;
+
+    if (profileImageFile.value) {
+      const imageResponse = await uploadTraderProfileImage(profileImageFile.value);
+      latestUser = imageResponse.user || latestUser;
+      profileImageFile.value = null;
+      profileImagePreview.value = toImageUrl(latestUser?.profileImagePath || '');
+    }
+
+    if (latestUser) {
+      saveSession(getToken(), latestUser);
+    }
+
+    feedback.value = 'Profile updated successfully.';
   } catch (error) {
     feedback.value = error.message;
   } finally {
@@ -51,6 +90,15 @@ onMounted(loadProfile);
       <h1>Update Your Profile</h1>
       <p class="sub">Keep your business details updated for marketplace visibility.</p>
     </header>
+
+    <section class="avatar-card">
+      <img v-if="profileImagePreview" :src="profileImagePreview" alt="Profile" class="avatar" />
+      <div v-else class="avatar placeholder">No Photo</div>
+      <label class="file-label">
+        Upload Profile Picture
+        <input type="file" accept="image/*" @change="onSelectProfileImage" />
+      </label>
+    </section>
 
     <form class="form" @submit.prevent="submitProfile">
       <label>
@@ -114,6 +162,37 @@ onMounted(loadProfile);
   padding: 1rem;
   display: grid;
   gap: 0.8rem;
+}
+
+.avatar-card {
+  margin-top: 1rem;
+  border: 1px solid rgba(113, 215, 177, 0.35);
+  border-radius: 18px;
+  background: linear-gradient(165deg, rgba(8, 35, 46, 0.88), rgba(9, 59, 71, 0.68));
+  padding: 1rem;
+  display: grid;
+  gap: 0.7rem;
+  justify-items: center;
+}
+
+.avatar {
+  width: 110px;
+  height: 110px;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 2px solid rgba(135, 230, 199, 0.48);
+}
+
+.avatar.placeholder {
+  display: grid;
+  place-items: center;
+  background: rgba(6, 29, 40, 0.7);
+  color: #c9ffe9;
+  font-weight: 800;
+}
+
+.file-label {
+  width: 100%;
 }
 
 label {

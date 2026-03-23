@@ -47,6 +47,7 @@ export async function findUserById(id) {
         profile_description,
         contact_number,
         business_address,
+        profile_image_path,
         created_at
       FROM users
       WHERE id = ?
@@ -146,6 +147,19 @@ export async function updateTraderProfileById(id, payload) {
   return result.affectedRows;
 }
 
+export async function updateTraderProfileImageById(id, profileImagePath) {
+  const [result] = await pool.execute(
+    `
+      UPDATE users
+      SET profile_image_path = ?
+      WHERE id = ? AND role = 'trader'
+    `,
+    [profileImagePath, id]
+  );
+
+  return result.affectedRows;
+}
+
 export function sanitizeUser(user) {
   return {
     id: user.id,
@@ -157,6 +171,7 @@ export function sanitizeUser(user) {
     profileDescription: user.profile_description || '',
     contactNumber: user.contact_number || '',
     businessAddress: user.business_address || '',
+    profileImagePath: user.profile_image_path || '',
     createdAt: user.created_at,
   };
 }

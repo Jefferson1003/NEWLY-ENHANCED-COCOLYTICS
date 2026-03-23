@@ -81,6 +81,16 @@ export function updateTraderProfile(payload) {
   });
 }
 
+export function uploadTraderProfileImage(file) {
+  const formData = new FormData();
+  formData.append('profileImage', file);
+
+  return request('/api/trader/profile/image', {
+    method: 'POST',
+    body: formData,
+  });
+}
+
 export function fetchTraderProducts() {
   return request('/api/trader/products');
 }

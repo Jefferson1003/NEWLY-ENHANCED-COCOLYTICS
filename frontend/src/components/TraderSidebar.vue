@@ -1,6 +1,17 @@
 <script setup>
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+const FILE_BASE_URL = API_BASE_URL.replace(/\/api\/?$/, '');
+
 defineProps({
+  userName: {
+    type: String,
+    default: '',
+  },
   userEmail: {
+    type: String,
+    default: '',
+  },
+  profileImagePath: {
     type: String,
     default: '',
   },
@@ -18,8 +29,16 @@ const emit = defineEmits(['logout', 'close']);
     <button type="button" class="close-btn" aria-label="Close sidebar" @click="emit('close')">X</button>
 
     <div class="brand">
+      <img
+        v-if="profileImagePath"
+        class="profile-image"
+        :src="profileImagePath.startsWith('http') ? profileImagePath : `${FILE_BASE_URL}${profileImagePath}`"
+        alt="Trader profile"
+      />
+      <div v-else class="profile-image placeholder">{{ (userName || 'T').slice(0, 1).toUpperCase() }}</div>
       <p class="kicker">Cocolytics</p>
       <h1>Trader Panel</h1>
+      <p class="display-name">{{ userName }}</p>
       <p class="account">{{ userEmail }}</p>
     </div>
 
@@ -79,6 +98,28 @@ const emit = defineEmits(['logout', 'close']);
   letter-spacing: 0.14em;
   font-size: 0.68rem;
   color: #8ff4c8;
+}
+
+.profile-image {
+  width: 64px;
+  height: 64px;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 2px solid rgba(131, 236, 200, 0.45);
+}
+
+.profile-image.placeholder {
+  display: grid;
+  place-items: center;
+  background: rgba(11, 53, 64, 0.88);
+  color: #dbfff2;
+  font-weight: 900;
+}
+
+.display-name {
+  margin: 0.4rem 0 0;
+  color: #dffff2;
+  font-weight: 700;
 }
 
 h1 {

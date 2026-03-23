@@ -12,11 +12,17 @@ import {
   removeCartItemById,
 } from '../models/marketplaceModel.js';
 import { createProduct, findProductsByTraderId, sanitizeProduct } from '../models/productModel.js';
-import { findUserById, sanitizeUser, updateTraderProfileById } from '../models/userModel.js';
+import {
+  findUserById,
+  sanitizeUser,
+  updateTraderProfileById,
+  updateTraderProfileImageById,
+} from '../models/userModel.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadsDir = path.resolve(__dirname, '../../../frontend/public/uploads/products_img');
+const profileUploadsDir = path.resolve(__dirname, '../../../frontend/public/uploads/profile_img');
 
 const storage = multer.diskStorage({
   destination: async (_req, _file, cb) => {
@@ -50,6 +56,29 @@ export const uploadProductImage = multer({
   fileFilter,
   limits: { fileSize: 5 * 1024 * 1024 },
 }).single('productImage');
+
+const profileImageStorage = multer.diskStorage({
+  destination: async (_req, _file, cb) => {
+    try {
+      await mkdir(profileUploadsDir, { recursive: true });
+      cb(null, profileUploadsDir);
+    } catch (error) {
+      cb(error);
+    }
+  },
+  filename: (_req, file, cb) => {
+    const extension = path.extname(file.originalname || '').toLowerCase();
+    const safeExt = extension || '.jpg';
+    const uniqueName = `profile-${Date.now()}-${Math.round(Math.random() * 1e9)}${safeExt}`;
+    cb(null, uniqueName);
+  },
+});
+
+export const uploadProfileImage = multer({
+  storage: profileImageStorage,
+  fileFilter,
+  limits: { fileSize: 3 * 1024 * 1024 },
+}).single('profileImage');
 
 export async function getTraderProfile(req, res) {
   try {
@@ -92,6 +121,29 @@ export async function updateTraderProfile(req, res) {
     });
   } catch {
     return res.status(500).json({ error: 'Could not update trader profile.' });
+  }
+}
+
+export async function updateTraderProfileImage(req, res) {
+  if (!req.file) {
+    return res.status(400).json({ error: 'profileImage file is required.' });
+  }
+
+  const imagePath = `/uploads/profile_img/${req.file.filename}`;
+
+  try {
+    const affectedRows = await updateTraderProfileImageById(req.auth.id, imagePath);
+    if (!affectedRows) {
+      return res.status(404).json({ error: 'Trader profile not found.' });
+    }
+
+    const updatedUser = await findUserById(req.auth.id);
+    return res.status(200).json({
+      message: 'Profile image updated successfully.',
+      user: sanitizeUser(updatedUser),
+    });
+  } catch {
+    return res.status(500).json({ error: 'Could not update profile image.' });
   }
 }
 

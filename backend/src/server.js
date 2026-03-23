@@ -18,6 +18,7 @@ const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:7904';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const productUploadsDir = path.resolve(__dirname, '../../frontend/public/uploads/products_img');
+const profileUploadsDir = path.resolve(__dirname, '../../frontend/public/uploads/profile_img');
 
 app.use(
   helmet({
@@ -28,6 +29,7 @@ app.use(cors({ origin: CLIENT_ORIGIN }));
 app.use(express.json());
 app.use(morgan('dev'));
 app.use('/uploads/products_img', express.static(productUploadsDir));
+app.use('/uploads/profile_img', express.static(profileUploadsDir));
 
 app.get('/api/health', health);
 app.get('/api', apiInfo);
