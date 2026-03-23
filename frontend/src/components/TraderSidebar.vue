@@ -24,8 +24,9 @@ const emit = defineEmits(['logout', 'close']);
     </div>
 
     <nav class="nav-links">
-      <router-link to="/trader" @click="emit('close')">Dashboard</router-link>
-      <a href="#snapshot" @click="emit('close')">Snapshot</a>
+      <router-link to="/trader/dashboard" @click="emit('close')">Dashboard</router-link>
+      <router-link to="/trader/profile" @click="emit('close')">Profile</router-link>
+      <router-link to="/trader/marketplace" @click="emit('close')">Marketplace</router-link>
     </nav>
 
     <button type="button" class="logout" @click="emit('logout')">Logout</button>

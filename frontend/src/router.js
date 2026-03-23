@@ -7,6 +7,9 @@ import AdminManageUsersPage from './pages/admin/AdminManageUsersPage.vue';
 import AdminStaffApplicationsPage from './pages/admin/AdminStaffApplicationsPage.vue';
 import ClientDashboard from './pages/client/ClientDashboard.vue';
 import TraderDashboard from './pages/trader/TraderDashboard.vue';
+import TraderHomePage from './pages/trader/TraderHomePage.vue';
+import TraderProfilePage from './pages/trader/TraderProfilePage.vue';
+import TraderMarketplacePage from './pages/trader/TraderMarketplacePage.vue';
 import { getUser, isLoggedIn } from './services/session';
 
 const router = createRouter({
@@ -30,7 +33,17 @@ const router = createRouter({
       ],
     },
     { path: '/client', name: 'client', component: ClientDashboard, meta: { auth: true, role: 'client' } },
-    { path: '/trader', name: 'trader', component: TraderDashboard, meta: { auth: true, role: 'trader' } },
+    {
+      path: '/trader',
+      component: TraderDashboard,
+      meta: { auth: true, role: 'trader' },
+      children: [
+        { path: '', redirect: { name: 'trader-dashboard' } },
+        { path: 'dashboard', name: 'trader-dashboard', component: TraderHomePage },
+        { path: 'profile', name: 'trader-profile', component: TraderProfilePage },
+        { path: 'marketplace', name: 'trader-marketplace', component: TraderMarketplacePage },
+      ],
+    },
   ],
 });
 
@@ -50,7 +63,7 @@ router.beforeEach((to) => {
 
   if (to.meta.role && user.role !== to.meta.role) {
     if (user.role === 'admin') return { name: 'admin-dashboard' };
-    if (user.role === 'trader') return { name: 'trader' };
+    if (user.role === 'trader') return { name: 'trader-dashboard' };
     return { name: 'client' };
   }
 

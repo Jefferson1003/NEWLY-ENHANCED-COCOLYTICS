@@ -36,7 +36,18 @@ export async function findUserForLogin(email) {
 export async function findUserById(id) {
   const [rows] = await pool.execute(
     `
-      SELECT id, full_name, email, password_hash, role, status, created_at
+      SELECT
+        id,
+        full_name,
+        email,
+        password_hash,
+        role,
+        status,
+        profile_name,
+        profile_description,
+        contact_number,
+        business_address,
+        created_at
       FROM users
       WHERE id = ?
       LIMIT 1
@@ -50,7 +61,7 @@ export async function findUserById(id) {
 export async function findAllNonAdminUsers() {
   const [rows] = await pool.execute(
     `
-      SELECT id, full_name, email, role, status, created_at
+      SELECT id, full_name, email, role, status, profile_name, contact_number, created_at
       FROM users
       WHERE role != 'admin'
       ORDER BY created_at DESC
@@ -112,6 +123,29 @@ export async function acceptClientAsTrader(id) {
   return result.affectedRows;
 }
 
+export async function updateTraderProfileById(id, payload) {
+  const [result] = await pool.execute(
+    `
+      UPDATE users
+      SET
+        profile_name = ?,
+        profile_description = ?,
+        contact_number = ?,
+        business_address = ?
+      WHERE id = ? AND role = 'trader'
+    `,
+    [
+      String(payload.name || '').trim(),
+      String(payload.description || '').trim(),
+      String(payload.contactNumber || '').trim(),
+      String(payload.businessAddress || '').trim(),
+      id,
+    ]
+  );
+
+  return result.affectedRows;
+}
+
 export function sanitizeUser(user) {
   return {
     id: user.id,
@@ -119,6 +153,10 @@ export function sanitizeUser(user) {
     email: user.email,
     role: user.role,
     status: user.status,
+    profileName: user.profile_name || '',
+    profileDescription: user.profile_description || '',
+    contactNumber: user.contact_number || '',
+    businessAddress: user.business_address || '',
     createdAt: user.created_at,
   };
 }

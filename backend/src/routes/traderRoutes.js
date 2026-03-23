@@ -1,0 +1,39 @@
+import { Router } from 'express';
+import {
+  addItemToCart,
+  addProduct,
+  getTraderProfile,
+  listCart,
+  listMarketplace,
+  listOrders,
+  listMyProducts,
+  placeOrder,
+  removeCartItem,
+  updateTraderProfile,
+  uploadProductImage,
+} from '../controllers/traderController.js';
+import { authRequired, requireRole } from '../middlewares/authMiddleware.js';
+
+const traderRouter = Router();
+
+traderRouter.use(authRequired, requireRole(['trader']));
+traderRouter.get('/profile', getTraderProfile);
+traderRouter.patch('/profile', updateTraderProfile);
+traderRouter.get('/products', listMyProducts);
+traderRouter.get('/marketplace/traders', listMarketplace);
+traderRouter.get('/cart', listCart);
+traderRouter.post('/cart', addItemToCart);
+traderRouter.delete('/cart/:id', removeCartItem);
+traderRouter.post('/orders/place', placeOrder);
+traderRouter.get('/orders', listOrders);
+traderRouter.post('/products', (req, res, next) => {
+  uploadProductImage(req, res, (error) => {
+    if (error) {
+      return res.status(400).json({ error: error.message || 'Invalid upload.' });
+    }
+
+    return next();
+  });
+}, addProduct);
+
+export default traderRouter;

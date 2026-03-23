@@ -38,7 +38,7 @@ async function loadProfile() {
     saveSession(getToken(), data.user);
 
     if (data.user.role === 'trader' || data.user.status === 'trader') {
-      router.push('/trader');
+      router.push('/trader/dashboard');
     }
   } catch (error) {
     feedback.value = error.message;

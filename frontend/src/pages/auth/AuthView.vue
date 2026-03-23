@@ -15,7 +15,7 @@ const isError = ref(false);
 
 function routeAfterLogin(user) {
   if (user.role === 'admin') return router.push('/admin');
-  if (user.role === 'trader' || user.status === 'trader') return router.push('/trader');
+  if (user.role === 'trader' || user.status === 'trader') return router.push('/trader/dashboard');
   return router.push('/client');
 }
 

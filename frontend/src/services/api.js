@@ -4,10 +4,14 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000
 
 async function request(path, options = {}) {
   const token = getToken();
+  const isFormDataBody = options.body instanceof FormData;
   const headers = {
-    'Content-Type': 'application/json',
     ...(options.headers || {}),
   };
+
+  if (!isFormDataBody && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
 
   if (token) {
     headers.Authorization = `Bearer ${token}`;
@@ -64,4 +68,67 @@ export function acceptTraderRole() {
   return request('/api/client/accept-trader', {
     method: 'POST',
   });
+}
+
+export function fetchTraderProfile() {
+  return request('/api/trader/profile');
+}
+
+export function updateTraderProfile(payload) {
+  return request('/api/trader/profile', {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchTraderProducts() {
+  return request('/api/trader/products');
+}
+
+export function createTraderProduct(payload) {
+  const formData = new FormData();
+  formData.append('productName', payload.productName || '');
+  formData.append('size', payload.size || '');
+  formData.append('lengthCm', payload.lengthCm ?? '');
+  formData.append('stockQuantity', String(payload.stockQuantity ?? ''));
+
+  if (payload.productImage) {
+    formData.append('productImage', payload.productImage);
+  }
+
+  return request('/api/trader/products', {
+    method: 'POST',
+    body: formData,
+  });
+}
+
+export function fetchMarketplaceTraders() {
+  return request('/api/trader/marketplace/traders');
+}
+
+export function fetchCartItems() {
+  return request('/api/trader/cart');
+}
+
+export function addCartItem(payload) {
+  return request('/api/trader/cart', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function removeCartItem(id) {
+  return request(`/api/trader/cart/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export function placeMyOrder() {
+  return request('/api/trader/orders/place', {
+    method: 'POST',
+  });
+}
+
+export function fetchMyOrders() {
+  return request('/api/trader/orders');
 }
