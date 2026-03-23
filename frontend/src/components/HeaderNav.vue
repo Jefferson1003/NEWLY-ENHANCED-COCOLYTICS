@@ -5,12 +5,14 @@
       <strong class="brand-name">Mobile Insights Hub</strong>
     </div>
 
-    <button type="button" class="login-btn" @click="emit('open-auth')">Login</button>
+    <button type="button" class="login-btn" @click="router.push('/auth')">Login</button>
   </header>
 </template>
 
 <script setup>
-const emit = defineEmits(['open-auth'])
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
 </script>
 
 <style scoped>

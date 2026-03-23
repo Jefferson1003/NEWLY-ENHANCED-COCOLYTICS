@@ -1,6 +1,5 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import AuthPage from './components/AuthPage.vue'
 import FooterSection from './components/FooterSection.vue'
 import HeaderNav from './components/HeaderNav.vue'
 import timberStack1 from './assets/hero/download (3).jpg'
@@ -10,7 +9,6 @@ import timberStack3 from './assets/hero/download (1).jpg'
 const deferredPrompt = ref(null)
 const installReady = ref(false)
 const installResult = ref('')
-const showAuthPage = ref(false)
 
 const signalCards = [
   {
@@ -86,9 +84,9 @@ async function installApp() {
     <div class="bg-layer bg-layer-one" aria-hidden="true"></div>
     <div class="bg-layer bg-layer-two" aria-hidden="true"></div>
 
-    <HeaderNav @open-auth="showAuthPage = true" />
+    <HeaderNav />
 
-    <main v-if="!showAuthPage" class="home-main">
+    <main class="home-main">
       <section class="hero reveal-up">
         <p class="hero-tag">Built For Mobile Operators</p>
         <h1>Cocolytics turns quick checks into confident decisions.</h1>
@@ -135,11 +133,7 @@ async function installApp() {
       </section>
     </main>
 
-    <main v-else class="home-main auth-main">
-      <AuthPage @close="showAuthPage = false" />
-    </main>
-
-    <FooterSection v-if="!showAuthPage" />
+    <FooterSection />
   </div>
 </template>
 
@@ -190,11 +184,6 @@ async function installApp() {
   display: grid;
   gap: 0.95rem;
   align-content: start;
-}
-
-.auth-main {
-  min-height: calc(100vh - 6.2rem);
-  align-content: center;
 }
 
 .hero-gallery {
