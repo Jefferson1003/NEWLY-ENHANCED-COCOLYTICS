@@ -1,0 +1,134 @@
+:root {
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #0f172a;
+  background: radial-gradient(circle at 20% 20%, #d1fae5, #f0fdf4 45%, #ecfeff 100%);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+#app {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  padding: 1.25rem;
+}
+
+.shell {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  display: grid;
+  align-items: center;
+}
+
+.card {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(15, 118, 110, 0.25);
+  border-radius: 20px;
+  padding: clamp(1.25rem, 3vw, 2.5rem);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 22px 60px rgba(2, 132, 199, 0.18);
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.75rem;
+  color: #0f766e;
+  margin: 0;
+}
+
+h1 {
+  margin: 0.35rem 0 0;
+  font-size: clamp(1.8rem, 4vw, 3rem);
+}
+
+.lead {
+  color: #155e75;
+  max-width: 58ch;
+}
+
+.cta-row {
+  margin-top: 1.35rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  align-items: center;
+}
+
+button,
+a {
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 0.72rem 1.1rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+button {
+  background: #0f766e;
+  color: #f0fdfa;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+button:hover:enabled,
+a:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(15, 118, 110, 0.25);
+}
+
+a {
+  color: #0f172a;
+  border-color: rgba(15, 23, 42, 0.18);
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.status {
+  margin-top: 1rem;
+  color: #115e59;
+  font-weight: 700;
+}
+
+.footer {
+  padding: 0.8rem;
+  text-align: center;
+  color: #155e75;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  #app {
+    padding: 0.8rem;
+  }
+
+  .cta-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  button,
+  a {
+    text-align: center;
+  }
+}
