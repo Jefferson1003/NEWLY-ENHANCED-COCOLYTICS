@@ -1,10 +1,13 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import ConfirmationModal from '../../components/ConfirmationModal.vue';
 import { acceptStaff, fetchClients } from '../../services/api';
 
 const users = ref([]);
 const loading = ref(true);
 const feedback = ref('');
+const showAcceptConfirm = ref(false);
+const targetUser = ref(null);
 
 const pendingStaff = computed(() => users.value.filter((user) => user.status === 'pending_staff'));
 
@@ -30,6 +33,23 @@ async function onAcceptStaff(id) {
   }
 }
 
+function requestAcceptStaff(user) {
+  targetUser.value = user;
+  showAcceptConfirm.value = true;
+}
+
+function cancelAcceptStaff() {
+  showAcceptConfirm.value = false;
+  targetUser.value = null;
+}
+
+async function confirmAcceptStaff() {
+  if (!targetUser.value) return;
+  const selectedId = targetUser.value.id;
+  cancelAcceptStaff();
+  await onAcceptStaff(selectedId);
+}
+
 onMounted(loadUsers);
 </script>
 
@@ -48,10 +68,20 @@ onMounted(loadUsers);
         <p class="name">{{ user.fullName }}</p>
         <p>{{ user.email }}</p>
         <p>Status: {{ user.status }}</p>
-        <button @click="onAcceptStaff(user.id)">Accept as Staff</button>
+        <button @click="requestAcceptStaff(user)">Accept as Staff</button>
       </article>
       <article v-if="!loading && pendingStaff.length === 0" class="card">No pending staff applications.</article>
     </div>
+
+    <ConfirmationModal
+      :visible="showAcceptConfirm"
+      title="Confirm Staff Approval"
+      :message="`Approve ${targetUser?.fullName || 'this user'} as staff?`"
+      confirm-label="Yes, Accept"
+      cancel-label="Cancel"
+      @confirm="confirmAcceptStaff"
+      @cancel="cancelAcceptStaff"
+    />
   </section>
 </template>
 

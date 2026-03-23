@@ -1,10 +1,13 @@
 <script setup>
 import { onMounted, ref } from 'vue';
+import ConfirmationModal from '../../components/ConfirmationModal.vue';
 import { acceptClient, fetchClients } from '../../services/api';
 
 const users = ref([]);
 const loading = ref(true);
 const feedback = ref('');
+const showAcceptConfirm = ref(false);
+const targetUser = ref(null);
 
 async function loadUsers() {
   loading.value = true;
@@ -26,6 +29,23 @@ async function onAcceptClient(id) {
   } catch (error) {
     feedback.value = error.message;
   }
+}
+
+function requestAcceptClient(user) {
+  targetUser.value = user;
+  showAcceptConfirm.value = true;
+}
+
+function cancelAcceptClient() {
+  showAcceptConfirm.value = false;
+  targetUser.value = null;
+}
+
+async function confirmAcceptClient() {
+  if (!targetUser.value) return;
+  const selectedId = targetUser.value.id;
+  cancelAcceptClient();
+  await onAcceptClient(selectedId);
 }
 
 onMounted(loadUsers);
@@ -64,7 +84,7 @@ onMounted(loadUsers);
               <button
                 v-if="user.status === 'pending_client'"
                 class="action-btn"
-                @click="onAcceptClient(user.id)"
+                @click="requestAcceptClient(user)"
               >
                 Accept Client
               </button>
@@ -76,6 +96,16 @@ onMounted(loadUsers);
         </tbody>
       </table>
     </div>
+
+    <ConfirmationModal
+      :visible="showAcceptConfirm"
+      title="Confirm Client Approval"
+      :message="`Approve ${targetUser?.fullName || 'this user'} as client?`"
+      confirm-label="Yes, Accept"
+      cancel-label="Cancel"
+      @confirm="confirmAcceptClient"
+      @cancel="cancelAcceptClient"
+    />
   </section>
 </template>
 

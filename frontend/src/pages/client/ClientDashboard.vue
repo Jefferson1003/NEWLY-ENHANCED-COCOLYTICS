@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import ConfirmationModal from '../../components/ConfirmationModal.vue';
 import { acceptTraderRole, fetchMe } from '../../services/api';
 import { clearSession, saveSession, getToken } from '../../services/session';
 
@@ -8,11 +9,26 @@ const router = useRouter();
 const profile = ref(null);
 const feedback = ref('');
 const loading = ref(true);
+const showLogoutConfirm = ref(false);
+const showAcceptTraderConfirm = ref(false);
 let pollTimer;
 
 function logout() {
   clearSession();
   router.push('/auth');
+}
+
+function requestLogout() {
+  showLogoutConfirm.value = true;
+}
+
+function cancelLogout() {
+  showLogoutConfirm.value = false;
+}
+
+function confirmLogout() {
+  showLogoutConfirm.value = false;
+  logout();
 }
 
 async function loadProfile() {
@@ -42,6 +58,19 @@ async function applyAsTrader() {
   }
 }
 
+function requestAcceptTrader() {
+  showAcceptTraderConfirm.value = true;
+}
+
+function cancelAcceptTrader() {
+  showAcceptTraderConfirm.value = false;
+}
+
+async function confirmAcceptTrader() {
+  showAcceptTraderConfirm.value = false;
+  await applyAsTrader();
+}
+
 onMounted(async () => {
   await loadProfile();
   pollTimer = setInterval(loadProfile, 8000);
@@ -61,7 +90,7 @@ onUnmounted(() => {
         <p class="kicker">Client Center</p>
         <h1>Welcome, {{ profile?.fullName || 'Client' }}</h1>
       </div>
-      <button class="logout" @click="logout">Logout</button>
+      <button class="logout" @click="requestLogout">Logout</button>
     </header>
 
     <article class="status-card" v-if="!loading">
@@ -72,7 +101,7 @@ onUnmounted(() => {
       <button
         v-if="profile?.status === 'accepted_client'"
         class="staff-btn"
-        @click="applyAsTrader"
+        @click="requestAcceptTrader"
       >
         Accept as Trader
       </button>
@@ -82,6 +111,27 @@ onUnmounted(() => {
     </article>
 
     <p v-if="feedback" class="feedback">{{ feedback }}</p>
+
+    <ConfirmationModal
+      :visible="showLogoutConfirm"
+      title="Confirm Logout"
+      message="Are you sure you want to logout?"
+      confirm-label="Yes, Logout"
+      cancel-label="Cancel"
+      :danger="true"
+      @confirm="confirmLogout"
+      @cancel="cancelLogout"
+    />
+
+    <ConfirmationModal
+      :visible="showAcceptTraderConfirm"
+      title="Confirm Trader Upgrade"
+      message="Do you want to accept and become a trader now?"
+      confirm-label="Yes, Become Trader"
+      cancel-label="Cancel"
+      @confirm="confirmAcceptTrader"
+      @cancel="cancelAcceptTrader"
+    />
   </section>
 </template>
 

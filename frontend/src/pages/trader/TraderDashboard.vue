@@ -1,12 +1,16 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
+import ConfirmationModal from '../../components/ConfirmationModal.vue';
+import TraderSidebar from '../../components/TraderSidebar.vue';
 import { fetchMe } from '../../services/api';
 import { clearSession } from '../../services/session';
 
 const router = useRouter();
 const profile = ref(null);
 const feedback = ref('');
+const sidebarOpen = ref(false);
+const showLogoutConfirm = ref(false);
 
 async function loadProfile() {
   try {
@@ -25,35 +29,95 @@ function logout() {
   router.push('/auth');
 }
 
+function requestLogout() {
+  showLogoutConfirm.value = true;
+}
+
+function cancelLogout() {
+  showLogoutConfirm.value = false;
+}
+
+function confirmLogout() {
+  showLogoutConfirm.value = false;
+  logout();
+}
+
+function toggleSidebar() {
+  sidebarOpen.value = !sidebarOpen.value;
+}
+
+function closeSidebar() {
+  sidebarOpen.value = false;
+}
+
 onMounted(loadProfile);
 </script>
 
 <template>
-  <section class="trader-page">
-    <header>
-      <p class="kicker">Trader Dashboard</p>
-      <h1>Welcome Trader</h1>
-      <p class="email">{{ profile?.email }}</p>
-    </header>
+  <section class="trader-layout">
+    <TraderSidebar
+      :user-email="profile?.email || ''"
+      :is-open="sidebarOpen"
+      @logout="requestLogout"
+      @close="closeSidebar"
+    />
 
-    <article class="panel">
-      <h2>Trading Snapshot</h2>
-      <ul>
-        <li>Open transactions: 6</li>
-        <li>New client requests: 4</li>
-        <li>Completed deals today: 9</li>
-      </ul>
-    </article>
+    <button
+      v-if="!sidebarOpen"
+      :class="['toggle', { open: sidebarOpen }]"
+      type="button"
+      aria-label="Toggle sidebar"
+      @click="toggleSidebar"
+    >
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+    <div v-if="sidebarOpen" class="overlay" @click="closeSidebar"></div>
 
-    <button class="logout" @click="logout">Logout</button>
-    <p v-if="feedback" class="feedback">{{ feedback }}</p>
+    <main class="trader-page">
+      <header>
+        <p class="kicker">Trader Dashboard</p>
+        <h1>Welcome Trader</h1>
+        <p class="email">{{ profile?.email }}</p>
+      </header>
+
+      <article id="snapshot" class="panel">
+        <h2>Trading Snapshot</h2>
+        <ul>
+          <li>Open transactions: 6</li>
+          <li>New client requests: 4</li>
+          <li>Completed deals today: 9</li>
+        </ul>
+      </article>
+
+      <p v-if="feedback" class="feedback">{{ feedback }}</p>
+    </main>
+
+    <ConfirmationModal
+      :visible="showLogoutConfirm"
+      title="Confirm Logout"
+      message="Are you sure you want to logout from trader panel?"
+      confirm-label="Yes, Logout"
+      cancel-label="Cancel"
+      :danger="true"
+      @confirm="confirmLogout"
+      @cancel="cancelLogout"
+    />
   </section>
 </template>
 
 <style scoped>
-.trader-page {
+.trader-layout {
   min-height: 100vh;
+  background: #071a22;
+  position: relative;
+  overflow: hidden;
+}
+
+.trader-page {
   padding: 1rem;
+  padding-top: 3.2rem;
   color: #effff7;
 }
 
@@ -95,18 +159,48 @@ ul {
   gap: 0.45rem;
 }
 
-.logout {
-  margin-top: 1rem;
-  border: 1px solid rgba(125, 235, 196, 0.42);
-  border-radius: 10px;
-  background: rgba(13, 57, 71, 0.72);
-  color: #effff7;
-  padding: 0.55rem 0.78rem;
-  font-weight: 700;
+.toggle {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  position: fixed;
+  top: 0.85rem;
+  left: 0.85rem;
+  z-index: 35;
+  border: 1px solid rgba(131, 236, 200, 0.46);
+  border-radius: 8px;
+  background: rgba(12, 51, 61, 0.95);
+  color: #e7fff4;
+  width: 38px;
+  height: 34px;
+  padding: 0.35rem;
+}
+
+.toggle span {
+  display: block;
+  width: 100%;
+  height: 2px;
+  border-radius: 999px;
+  background: #e7fff4;
 }
 
 .feedback {
   margin-top: 0.8rem;
   color: #ffbfca;
+}
+
+.overlay {
+  display: block;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 25;
+}
+
+@media (max-width: 820px) {
+  .trader-page {
+    padding-top: 3.2rem;
+  }
 }
 </style>
