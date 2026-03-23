@@ -38,7 +38,7 @@ npm --prefix frontend run dev
 ```
 
 Backend runs at `http://localhost:4000`.
-Frontend runs at `http://localhost:5173`.
+Frontend runs at `http://localhost:7904`.
 
 ## PWA Installability
 

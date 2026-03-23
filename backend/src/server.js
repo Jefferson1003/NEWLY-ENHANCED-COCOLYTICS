@@ -6,7 +6,7 @@ import morgan from 'morgan';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
-const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:7904';
 
 app.use(helmet());
 app.use(cors({ origin: CLIENT_ORIGIN }));
