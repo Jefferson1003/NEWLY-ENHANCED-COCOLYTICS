@@ -6,6 +6,7 @@ import {
   getTraderProfile,
   listCart,
   listMarketplace,
+  listMyPaperUploads,
   listMessageContacts,
   listPublicMarketplaceTraders,
   listMessagesWithTrader,
@@ -19,8 +20,10 @@ import {
   updateCartItemQuantity,
   updateTraderProfile,
   updateTraderProfileImage,
+  uploadPaperFile,
   uploadProfileImage,
   uploadProductImage,
+  uploadTraderPaper,
 } from '../controllers/traderController.js';
 import { authRequired, requireRole } from '../middlewares/authMiddleware.js';
 
@@ -53,6 +56,16 @@ traderRouter.delete('/cart/:id', removeCartItem);
 traderRouter.patch('/cart/:id/quantity', updateCartItemQuantity);
 traderRouter.post('/orders/place', placeOrder);
 traderRouter.get('/orders', listOrders);
+traderRouter.get('/paper-uploads', listMyPaperUploads);
+traderRouter.post('/paper-uploads', (req, res, next) => {
+  uploadPaperFile(req, res, (error) => {
+    if (error) {
+      return res.status(400).json({ error: error.message || 'Invalid upload.' });
+    }
+
+    return next();
+  });
+}, uploadTraderPaper);
 traderRouter.post('/products', (req, res, next) => {
   uploadProductImage(req, res, (error) => {
     if (error) {

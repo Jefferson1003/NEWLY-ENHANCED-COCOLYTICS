@@ -27,6 +27,7 @@ const emit = defineEmits(['logout', 'close']);
       <router-link to="/admin/dashboard" @click="emit('close')">Dashboard</router-link>
       <router-link to="/admin/manage-users" @click="emit('close')">Manage Users</router-link>
       <router-link to="/admin/staff-applications" @click="emit('close')">Staff Applications</router-link>
+      <router-link to="/admin/paper-approvals" @click="emit('close')">Paper Approvals</router-link>
     </nav>
 
     <button type="button" class="logout" @click="emit('logout')">Logout</button>

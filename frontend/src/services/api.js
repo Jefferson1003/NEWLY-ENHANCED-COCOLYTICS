@@ -201,3 +201,37 @@ export function getTraderMessageStreamUrl() {
   const separator = streamPath.includes('?') ? '&' : '?';
   return `${API_BASE_URL}${streamPath}${separator}token=${encodeURIComponent(token)}`;
 }
+
+export function fetchTraderPaperUploads() {
+  return request('/api/trader/paper-uploads');
+}
+
+export function uploadTraderPaper(payload) {
+  const formData = new FormData();
+  formData.append('paperType', payload.paperType || '');
+  formData.append('title', payload.title || '');
+  formData.append('description', payload.description || '');
+
+  if (payload.paperFile) {
+    formData.append('paperFile', payload.paperFile);
+  }
+
+  return request('/api/trader/paper-uploads', {
+    method: 'POST',
+    body: formData,
+  });
+}
+
+export function fetchAdminPaperUploads() {
+  return request('/api/admin/paper-uploads');
+}
+
+export function reviewAdminPaperUpload(uploadId, payload) {
+  return request(`/api/admin/paper-uploads/${uploadId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      status: payload.status,
+      reviewNotes: payload.reviewNotes || '',
+    }),
+  });
+}

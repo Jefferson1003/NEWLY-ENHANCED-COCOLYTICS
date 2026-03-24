@@ -15,6 +15,8 @@ import TraderAddressEditorPage from './pages/trader/TraderAddressEditorPage.vue'
 import TraderInventoryPage from './pages/trader/TraderInventoryPage.vue';
 import TraderMessagesPage from './pages/trader/TraderMessagesPage.vue';
 import TraderVisitDetailPage from './pages/trader/TraderVisitDetailPage.vue';
+import TraderDocumentsPage from './pages/trader/TraderDocumentsPage.vue';
+import AdminPaperApprovalsPage from './pages/admin/AdminPaperApprovalsPage.vue';
 import { getUser, isLoggedIn } from './services/session';
 
 const router = createRouter({
@@ -41,6 +43,11 @@ const router = createRouter({
           name: 'admin-staff-applications',
           component: AdminStaffApplicationsPage,
         },
+        {
+          path: 'paper-approvals',
+          name: 'admin-paper-approvals',
+          component: AdminPaperApprovalsPage,
+        },
       ],
     },
     { path: '/client', name: 'client', component: ClientDashboard, meta: { auth: true, role: 'client' } },
@@ -54,6 +61,7 @@ const router = createRouter({
         { path: 'profile', name: 'trader-profile', component: TraderProfilePage },
         { path: 'marketplace', name: 'trader-marketplace', component: TraderMarketplacePage },
         { path: 'inventory', name: 'trader-inventory', component: TraderInventoryPage },
+        { path: 'documents', name: 'trader-documents', component: TraderDocumentsPage },
         { path: 'messages', name: 'trader-messages', component: TraderMessagesPage },
         { path: 'address-editor', name: 'trader-address-editor', component: TraderAddressEditorPage },
         {

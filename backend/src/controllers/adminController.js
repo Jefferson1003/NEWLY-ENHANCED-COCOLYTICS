@@ -4,6 +4,12 @@ import {
   findAllNonAdminUsers,
   sanitizeUser,
 } from '../models/userModel.js';
+import {
+  findAllPaperUploads,
+  findPaperUploadById,
+  sanitizePaperUpload,
+  updatePaperUploadStatus,
+} from '../models/paperUploadModel.js';
 
 export async function listClients(_req, res) {
   try {
@@ -47,5 +53,51 @@ export async function acceptStaff(req, res) {
     return res.status(200).json({ message: 'Client promoted to staff.' });
   } catch {
     return res.status(500).json({ error: 'Could not approve staff request.' });
+  }
+}
+
+export async function listPaperUploads(_req, res) {
+  try {
+    const rows = await findAllPaperUploads();
+    return res.status(200).json({ uploads: rows.map(sanitizePaperUpload) });
+  } catch {
+    return res.status(500).json({ error: 'Could not fetch paper uploads.' });
+  }
+}
+
+export async function reviewPaperUpload(req, res) {
+  const uploadId = Number(req.params.id);
+  const status = String(req.body?.status || '').trim().toLowerCase();
+  const reviewNotes = String(req.body?.reviewNotes || '').trim();
+
+  if (!Number.isInteger(uploadId) || uploadId <= 0) {
+    return res.status(400).json({ error: 'Invalid upload ID.' });
+  }
+
+  if (!['approved', 'rejected'].includes(status)) {
+    return res.status(400).json({ error: 'status must be approved or rejected.' });
+  }
+
+  try {
+    const existing = await findPaperUploadById(uploadId);
+    if (!existing) {
+      return res.status(404).json({ error: 'Paper upload not found.' });
+    }
+
+    const affectedRows = await updatePaperUploadStatus(uploadId, {
+      status,
+      reviewNotes,
+      reviewedBy: req.auth.id,
+    });
+
+    if (!affectedRows) {
+      return res.status(404).json({ error: 'Paper upload not found.' });
+    }
+
+    return res.status(200).json({
+      message: `Paper upload ${status} successfully.`,
+    });
+  } catch {
+    return res.status(500).json({ error: 'Could not update paper upload status.' });
   }
 }

@@ -8,6 +8,11 @@ import {
   listTraderMessageContacts,
 } from '../models/chatModel.js';
 import {
+  createPaperUpload,
+  findPaperUploadsByTraderId,
+  sanitizePaperUpload,
+} from '../models/paperUploadModel.js';
+import {
   addTraderStreamClient,
   pushTraderEvent,
   removeTraderStreamClient,
@@ -42,6 +47,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadsDir = path.resolve(__dirname, '../../../frontend/public/uploads/products_img');
 const profileUploadsDir = path.resolve(__dirname, '../../../frontend/public/uploads/profile_img');
+const paperUploadsDir = path.resolve(__dirname, '../../../frontend/public/uploads/paper_docs');
 
 const storage = multer.diskStorage({
   destination: async (_req, _file, cb) => {
@@ -92,6 +98,28 @@ const profileImageStorage = multer.diskStorage({
     cb(null, uniqueName);
   },
 });
+
+const paperFileStorage = multer.diskStorage({
+  destination: async (_req, _file, cb) => {
+    try {
+      await mkdir(paperUploadsDir, { recursive: true });
+      cb(null, paperUploadsDir);
+    } catch (error) {
+      cb(error);
+    }
+  },
+  filename: (_req, file, cb) => {
+    const extension = path.extname(file.originalname || '').toLowerCase();
+    const safeExt = extension || '.bin';
+    const uniqueName = `paper-${Date.now()}-${Math.round(Math.random() * 1e9)}${safeExt}`;
+    cb(null, uniqueName);
+  },
+});
+
+export const uploadPaperFile = multer({
+  storage: paperFileStorage,
+  limits: { fileSize: 25 * 1024 * 1024 },
+}).single('paperFile');
 
 export const uploadProfileImage = multer({
   storage: profileImageStorage,
@@ -571,6 +599,54 @@ export async function listOrders(req, res) {
     return res.status(200).json({ orders: Array.from(ordersMap.values()) });
   } catch {
     return res.status(500).json({ error: 'Could not fetch orders.' });
+  }
+}
+
+export async function listMyPaperUploads(req, res) {
+  try {
+    const rows = await findPaperUploadsByTraderId(req.auth.id);
+    return res.status(200).json({ uploads: rows.map(sanitizePaperUpload) });
+  } catch {
+    return res.status(500).json({ error: 'Could not fetch paper uploads.' });
+  }
+}
+
+export async function uploadTraderPaper(req, res) {
+  const paperType = String(req.body?.paperType || '').trim().toLowerCase();
+  const title = String(req.body?.title || '').trim();
+  const description = String(req.body?.description || '').trim();
+
+  if (!['to_cut', 'transport'].includes(paperType)) {
+    return res.status(400).json({ error: 'paperType must be to_cut or transport.' });
+  }
+
+  if (!title) {
+    return res.status(400).json({ error: 'title is required.' });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ error: 'paperFile is required.' });
+  }
+
+  try {
+    const filePath = `/uploads/paper_docs/${req.file.filename}`;
+    const createdId = await createPaperUpload({
+      traderId: req.auth.id,
+      paperType,
+      title,
+      description,
+      filePath,
+      originalFileName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      fileSize: req.file.size,
+    });
+
+    return res.status(201).json({
+      message: 'Paper uploaded successfully and is pending admin review.',
+      uploadId: createdId,
+    });
+  } catch {
+    return res.status(500).json({ error: 'Could not upload paper.' });
   }
 }
 
