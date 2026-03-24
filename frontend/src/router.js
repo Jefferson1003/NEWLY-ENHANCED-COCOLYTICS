@@ -16,6 +16,7 @@ import TraderInventoryPage from './pages/trader/TraderInventoryPage.vue';
 import TraderMessagesPage from './pages/trader/TraderMessagesPage.vue';
 import TraderVisitDetailPage from './pages/trader/TraderVisitDetailPage.vue';
 import TraderDocumentsPage from './pages/trader/TraderDocumentsPage.vue';
+import TraderOperationsPage from './pages/trader/TraderOperationsPage.vue';
 import AdminPaperApprovalsPage from './pages/admin/AdminPaperApprovalsPage.vue';
 import { getUser, isLoggedIn } from './services/session';
 
@@ -62,6 +63,7 @@ const router = createRouter({
         { path: 'marketplace', name: 'trader-marketplace', component: TraderMarketplacePage },
         { path: 'inventory', name: 'trader-inventory', component: TraderInventoryPage },
         { path: 'documents', name: 'trader-documents', component: TraderDocumentsPage },
+        { path: 'operations', name: 'trader-operations', component: TraderOperationsPage },
         { path: 'messages', name: 'trader-messages', component: TraderMessagesPage },
         { path: 'address-editor', name: 'trader-address-editor', component: TraderAddressEditorPage },
         {
