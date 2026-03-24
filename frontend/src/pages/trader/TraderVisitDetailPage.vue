@@ -2,9 +2,7 @@
 import { onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { fetchPublicMarketplaceTraderDetail } from '../../services/api';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
-const FILE_BASE_URL = API_BASE_URL.replace(/\/api\/?$/, '');
+import { toMediaUrl } from '../../services/media';
 
 const route = useRoute();
 const router = useRouter();
@@ -14,8 +12,7 @@ const trader = ref(null);
 
 function toImageUrl(path) {
   if (!path) return '';
-  if (path.startsWith('http')) return path;
-  return `${FILE_BASE_URL}${path}`;
+  return toMediaUrl(path);
 }
 
 async function loadTrader() {

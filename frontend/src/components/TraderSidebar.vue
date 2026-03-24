@@ -1,6 +1,5 @@
 <script setup>
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
-const FILE_BASE_URL = API_BASE_URL.replace(/\/api\/?$/, '');
+import { toMediaUrl } from '../services/media';
 
 defineProps({
   userName: {
@@ -32,7 +31,7 @@ const emit = defineEmits(['logout', 'close']);
       <img
         v-if="profileImagePath"
         class="profile-image"
-        :src="profileImagePath.startsWith('http') ? profileImagePath : `${FILE_BASE_URL}${profileImagePath}`"
+        :src="toMediaUrl(profileImagePath)"
         alt="Trader profile"
       />
       <div v-else class="profile-image placeholder">{{ (userName || 'T').slice(0, 1).toUpperCase() }}</div>

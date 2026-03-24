@@ -4,13 +4,11 @@ import { useRouter } from 'vue-router'
 import FooterSection from './components/FooterSection.vue'
 import HeaderNav from './components/HeaderNav.vue'
 import { fetchPublicMarketplaceTraders } from './services/api'
+import { toMediaUrl } from './services/media'
 import { getUser, isLoggedIn, setVisitTraderIntent } from './services/session'
 import timberStack1 from './assets/hero/download (3).jpg'
 import timberStack2 from './assets/hero/download (2).jpg'
 import timberStack3 from './assets/hero/download (1).jpg'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000'
-const FILE_BASE_URL = API_BASE_URL.replace(/\/api\/?$/, '')
 
 const router = useRouter()
 const deferredPrompt = ref(null)
@@ -59,8 +57,7 @@ const installLabel = computed(() =>
 
 function toImageUrl(path) {
   if (!path) return ''
-  if (path.startsWith('http')) return path
-  return `${FILE_BASE_URL}${path}`
+  return toMediaUrl(path)
 }
 
 async function loadTraders() {
