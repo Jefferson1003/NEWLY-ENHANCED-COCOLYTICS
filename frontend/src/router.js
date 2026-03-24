@@ -61,6 +61,13 @@ const router = createRouter({
 });
 
 router.beforeEach((to) => {
+  if (to.name === 'home' && isLoggedIn()) {
+    const user = getUser();
+    if (user?.role === 'admin') return { name: 'admin-dashboard' };
+    if (user?.role === 'trader' || user?.status === 'trader') return { name: 'trader-dashboard' };
+    return { name: 'client' };
+  }
+
   if (!to.meta.auth) {
     return true;
   }

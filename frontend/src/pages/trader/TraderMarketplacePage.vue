@@ -33,6 +33,18 @@ const loadingMarketplace = ref(false);
 const loadingCart = ref(false);
 const loadingOrders = ref(false);
 
+function withTrailingDots(value, maxLength = 44) {
+  const text = String(value || '').trim();
+  if (!text) return 'No description yet.';
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength)}.............`;
+}
+
+function traderInitial(name) {
+  const normalized = String(name || 'T').trim();
+  return (normalized[0] || 'T').toUpperCase();
+}
+
 function toImageUrl(path) {
   if (!path) return '';
   return toMediaUrl(path);
@@ -224,7 +236,7 @@ onMounted(async () => {
       <p v-if="loadingProducts" class="muted">Loading products...</p>
       <p v-else-if="!products.length" class="muted">No products yet.</p>
 
-      <div v-else class="products">
+      <div v-else :class="['products', 'inventory-products', { 'single-item': products.length === 1 }]">
         <article v-for="product in products" :key="product.id" class="product-card">
           <img v-if="product.productImagePath" :src="toImageUrl(product.productImagePath)" alt="Product" />
           <div>
@@ -244,8 +256,17 @@ onMounted(async () => {
 
       <div v-else class="traders-grid">
         <article v-for="trader in marketplace" :key="trader.traderId" class="trader-card">
+          <img
+            v-if="trader.profileImagePath"
+            :src="toImageUrl(trader.profileImagePath)"
+            :alt="`${trader.name || 'Trader'} profile`"
+            class="trader-avatar"
+          />
+          <div v-else class="trader-avatar placeholder">{{ traderInitial(trader.name) }}</div>
           <h3>{{ trader.name || 'Trader' }}</h3>
-          <p class="desc">{{ trader.description || 'No description yet.' }}</p>
+          <p class="desc" :title="trader.description || 'No description yet.'">
+            {{ withTrailingDots(trader.description) }}
+          </p>
           <p class="meta">Total Products: {{ trader.totalProducts }}</p>
           <p class="meta">Total Stocks: {{ trader.totalStocks }}</p>
           <p class="meta">Contact: {{ trader.contactNumber || 'N/A' }}</p>
@@ -422,14 +443,24 @@ button:disabled {
   gap: 0.75rem;
 }
 
+.inventory-products {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.inventory-products.single-item .product-card {
+  grid-column: 1 / -1;
+}
+
 .product-card {
   border: 1px solid rgba(123, 225, 191, 0.28);
   border-radius: 12px;
   background: rgba(5, 26, 36, 0.65);
-  padding: 0.7rem;
+  padding: 0.6rem;
   display: grid;
   grid-template-columns: 90px 1fr;
-  gap: 0.75rem;
+  gap: 0.55rem;
+  align-content: start;
 }
 
 .product-card img {
@@ -458,46 +489,76 @@ button:disabled {
 .traders-grid {
   margin-top: 0.85rem;
   display: grid;
-  gap: 0.8rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
 }
 
 .trader-card {
   border: 1px solid rgba(123, 225, 191, 0.28);
   border-radius: 14px;
   background: rgba(9, 34, 46, 0.66);
-  padding: 0.8rem;
+  padding: 0.55rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.trader-avatar {
+  width: 100%;
+  height: clamp(60px, 18vw, 120px);
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid rgba(133, 229, 197, 0.35);
+}
+
+.trader-avatar.placeholder {
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg, rgba(19, 92, 76, 0.72), rgba(15, 66, 108, 0.72));
+  color: #d8fff1;
+  font-weight: 900;
+  font-size: clamp(1rem, 4vw, 1.5rem);
 }
 
 .trader-card h3 {
   margin: 0;
+  margin-top: 0.42rem;
+  font-size: 0.86rem;
+  line-height: 1.2;
 }
 
 .desc {
   margin: 0.4rem 0 0;
   color: #d4fff0;
+  font-size: 0.76rem;
+  line-height: 1.2;
+  min-height: 2.4em;
+  overflow: hidden;
 }
 
 .meta {
-  margin: 0.24rem 0 0;
+  margin: 0.18rem 0 0;
   color: #c5f9e5;
-  font-size: 0.9rem;
+  font-size: 0.72rem;
 }
 
 .actions {
-  margin-top: 0.7rem;
+  margin-top: auto;
+  padding-top: 0.45rem;
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  flex-direction: column;
+  gap: 0.35rem;
 }
 
 .mini-btn {
-  margin-top: 0.5rem;
+  margin-top: 0;
   border: 1px solid rgba(133, 229, 197, 0.55);
   border-radius: 10px;
   background: #1f67a8;
   color: #ecfff7;
-  padding: 0.5rem 0.7rem;
+  padding: 0.4rem 0.45rem;
   font-weight: 700;
+  font-size: 0.7rem;
   cursor: pointer;
 }
 
@@ -571,7 +632,7 @@ button:disabled {
 
   .product-card img {
     width: 100%;
-    height: 160px;
+    height: 120px;
   }
 }
 </style>

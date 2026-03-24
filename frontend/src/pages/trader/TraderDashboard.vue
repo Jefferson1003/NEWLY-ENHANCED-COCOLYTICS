@@ -1,16 +1,23 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import ConfirmationModal from '../../components/ConfirmationModal.vue';
 import TraderSidebar from '../../components/TraderSidebar.vue';
 import { fetchMe } from '../../services/api';
-import { clearSession } from '../../services/session';
+import { clearSession, getUser, SESSION_UPDATED_EVENT } from '../../services/session';
 
 const router = useRouter();
 const profile = ref(null);
 const feedback = ref('');
 const sidebarOpen = ref(false);
 const showLogoutConfirm = ref(false);
+
+function syncProfileFromSession() {
+  const user = getUser();
+  if (user) {
+    profile.value = user;
+  }
+}
 
 async function loadProfile() {
   try {
@@ -50,7 +57,15 @@ function closeSidebar() {
   sidebarOpen.value = false;
 }
 
-onMounted(loadProfile);
+onMounted(() => {
+  syncProfileFromSession();
+  loadProfile();
+  window.addEventListener(SESSION_UPDATED_EVENT, syncProfileFromSession);
+});
+
+onUnmounted(() => {
+  window.removeEventListener(SESSION_UPDATED_EVENT, syncProfileFromSession);
+});
 </script>
 
 <template>

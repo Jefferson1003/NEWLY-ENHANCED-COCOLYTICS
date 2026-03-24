@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import { findUserById } from '../models/userModel.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret';
 
@@ -24,11 +25,26 @@ export function authRequired(req, res, next) {
 }
 
 export function requireRole(roles) {
-  return (req, res, next) => {
-    if (!roles.includes(req.auth.role)) {
-      return res.status(403).json({ error: 'You do not have access to this resource.' });
+  return async (req, res, next) => {
+    if (roles.includes(req.auth.role)) {
+      return next();
     }
 
-    return next();
+    try {
+      const currentUser = await findUserById(req.auth.id);
+      if (!currentUser) {
+        return res.status(401).json({ error: 'User not found for this session.' });
+      }
+
+      const currentRole = currentUser.role;
+      if (roles.includes(currentRole)) {
+        req.auth.role = currentRole;
+        return next();
+      }
+
+      return res.status(403).json({ error: 'You do not have access to this resource.' });
+    } catch {
+      return res.status(500).json({ error: 'Could not verify permissions.' });
+    }
   };
 }

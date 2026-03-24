@@ -3,16 +3,28 @@ import { onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { fetchPublicMarketplaceTraderDetail } from '../../services/api';
 import { toMediaUrl } from '../../services/media';
+import { getUser } from '../../services/session';
 
 const route = useRoute();
 const router = useRouter();
 const loading = ref(false);
 const error = ref('');
 const trader = ref(null);
+const backLabel = ref('Back to Dashboard');
 
 function toImageUrl(path) {
   if (!path) return '';
   return toMediaUrl(path);
+}
+
+function goBackToDashboard() {
+  const user = getUser();
+  if (user?.role === 'trader' || user?.status === 'trader') {
+    router.push({ name: 'trader-dashboard' });
+    return;
+  }
+
+  router.push({ name: 'client' });
 }
 
 async function loadTrader() {
@@ -44,7 +56,7 @@ onMounted(loadTrader);
 
 <template>
   <section class="page">
-    <button type="button" class="back-btn" @click="router.push('/')">Back to Home</button>
+    <button type="button" class="back-btn" @click="goBackToDashboard">{{ backLabel }}</button>
 
     <p v-if="loading" class="muted">Loading trader profile...</p>
     <p v-else-if="error" class="error">{{ error }}</p>

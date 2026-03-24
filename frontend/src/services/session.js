@@ -1,16 +1,24 @@
 const TOKEN_KEY = 'cocolytics_token';
 const USER_KEY = 'cocolytics_user';
 const VISIT_TRADER_INTENT_KEY = 'cocolytics_visit_trader_intent';
+export const SESSION_UPDATED_EVENT = 'cocolytics-session-updated';
+
+function emitSessionUpdate() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(SESSION_UPDATED_EVENT));
+}
 
 export function saveSession(token, user) {
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.setItem(USER_KEY, JSON.stringify(user));
+  emitSessionUpdate();
 }
 
 export function clearSession() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem(VISIT_TRADER_INTENT_KEY);
+  emitSessionUpdate();
 }
 
 export function getToken() {
