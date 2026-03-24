@@ -141,9 +141,10 @@ export function removeCartItem(id) {
   });
 }
 
-export function placeMyOrder() {
+export function placeMyOrder(payload) {
   return request('/api/trader/orders/place', {
     method: 'POST',
+    body: JSON.stringify(payload || {}),
   });
 }
 

@@ -122,7 +122,7 @@ export async function removeCartItemById(buyerId, cartItemId) {
   return result.affectedRows;
 }
 
-export async function placeOrderFromCart(buyerId) {
+export async function placeOrderFromCart(buyerId, checkoutDetails) {
   const connection = await pool.getConnection();
 
   try {
@@ -160,10 +160,34 @@ export async function placeOrderFromCart(buyerId) {
 
     const [orderResult] = await connection.execute(
       `
-        INSERT INTO orders (buyer_id, status)
-        VALUES (?, 'to_ship')
+        INSERT INTO orders (
+          buyer_id,
+          status,
+          customer_full_name,
+          customer_contact_number,
+          delivery_region,
+          delivery_province,
+          delivery_city,
+          delivery_barangay,
+          delivery_street_address,
+          delivery_full_address,
+          payment_method,
+          delivery_notes
+        )
+        VALUES (?, 'to_ship', ?, ?, ?, ?, ?, ?, ?, ?, 'cash_on_delivery', ?)
       `,
-      [buyerId]
+      [
+        buyerId,
+        checkoutDetails.fullName,
+        checkoutDetails.contactNumber,
+        checkoutDetails.regionName,
+        checkoutDetails.provinceName,
+        checkoutDetails.cityName,
+        checkoutDetails.barangayName,
+        checkoutDetails.streetAddress,
+        checkoutDetails.fullAddress,
+        checkoutDetails.deliveryNotes,
+      ]
     );
 
     const orderId = orderResult.insertId;
@@ -195,14 +219,18 @@ export async function placeOrderFromCart(buyerId) {
         ]
       );
 
-      await connection.execute(
+      const [stockUpdateResult] = await connection.execute(
         `
           UPDATE products
           SET stock_quantity = stock_quantity - ?
-          WHERE id = ?
+          WHERE id = ? AND stock_quantity >= ?
         `,
-        [row.quantity, row.product_id]
+        [row.quantity, row.product_id, row.quantity]
       );
+
+      if (!stockUpdateResult.affectedRows) {
+        throw new Error(`Not enough stock for ${row.product_name}.`);
+      }
     }
 
     await connection.execute(
@@ -229,6 +257,16 @@ export async function listOrdersByBuyerId(buyerId) {
       SELECT
         o.id AS order_id,
         o.status,
+        o.customer_full_name,
+        o.customer_contact_number,
+        o.delivery_region,
+        o.delivery_province,
+        o.delivery_city,
+        o.delivery_barangay,
+        o.delivery_street_address,
+        o.delivery_full_address,
+        o.payment_method,
+        o.delivery_notes,
         o.created_at AS order_created_at,
         oi.id AS order_item_id,
         oi.product_id,

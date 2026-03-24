@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   createTraderProduct,
@@ -11,6 +11,8 @@ import {
   removeCartItem,
 } from '../../services/api';
 import { toMediaUrl } from '../../services/media';
+import { loadPhAddressData, normalizeByName } from '../../services/phAddress';
+import { getUser } from '../../services/session';
 const router = useRouter();
 const activeTab = ref('add-product');
 
@@ -32,6 +34,49 @@ const orders = ref([]);
 const loadingMarketplace = ref(false);
 const loadingCart = ref(false);
 const loadingOrders = ref(false);
+const loadingPhAddress = ref(false);
+const regions = ref([]);
+const provinces = ref([]);
+const cities = ref([]);
+const barangays = ref([]);
+
+const checkoutForm = reactive({
+  fullName: '',
+  contactNumber: '',
+  streetAddress: '',
+  regionCode: '',
+  provinceCode: '',
+  cityCode: '',
+  barangayCode: '',
+  paymentMethod: 'cash_on_delivery',
+  deliveryNotes: '',
+});
+
+const filteredProvinces = computed(() => {
+  if (!checkoutForm.regionCode) return [];
+  return normalizeByName(
+    provinces.value.filter((province) => String(province.region_code) === String(checkoutForm.regionCode)),
+    'province_name'
+  );
+});
+
+const filteredCities = computed(() => {
+  if (!checkoutForm.provinceCode) return [];
+  return normalizeByName(
+    cities.value.filter((city) => String(city.province_code) === String(checkoutForm.provinceCode)),
+    'city_name'
+  );
+});
+
+const filteredBarangays = computed(() => {
+  if (!checkoutForm.cityCode) return [];
+  return normalizeByName(
+    barangays.value.filter((barangay) => String(barangay.city_code) === String(checkoutForm.cityCode)),
+    'brgy_name'
+  );
+});
+
+const orderCount = computed(() => orders.value.length);
 
 function withTrailingDots(value, maxLength = 44) {
   const text = String(value || '').trim();
@@ -52,6 +97,52 @@ function toImageUrl(path) {
 
 function totalCartQuantity() {
   return cartItems.value.reduce((total, item) => total + Number(item.quantity || 0), 0);
+}
+
+function getSelectedRegion() {
+  return regions.value.find((region) => String(region.region_code) === String(checkoutForm.regionCode)) || null;
+}
+
+function getSelectedProvince() {
+  return provinces.value.find((province) => String(province.province_code) === String(checkoutForm.provinceCode)) || null;
+}
+
+function getSelectedCity() {
+  return cities.value.find((city) => String(city.city_code) === String(checkoutForm.cityCode)) || null;
+}
+
+function getSelectedBarangay() {
+  return barangays.value.find((barangay) => String(barangay.brgy_code) === String(checkoutForm.barangayCode)) || null;
+}
+
+function onRegionChange() {
+  checkoutForm.provinceCode = '';
+  checkoutForm.cityCode = '';
+  checkoutForm.barangayCode = '';
+}
+
+function onProvinceChange() {
+  checkoutForm.cityCode = '';
+  checkoutForm.barangayCode = '';
+}
+
+function onCityChange() {
+  checkoutForm.barangayCode = '';
+}
+
+async function loadPhAddressSelectors() {
+  loadingPhAddress.value = true;
+  try {
+    const data = await loadPhAddressData();
+    regions.value = normalizeByName(data.regions || [], 'region_name');
+    provinces.value = data.provinces || [];
+    cities.value = data.cities || [];
+    barangays.value = data.barangays || [];
+  } catch (error) {
+    feedback.value = error.message;
+  } finally {
+    loadingPhAddress.value = false;
+  }
 }
 
 async function loadProducts() {
@@ -135,8 +226,42 @@ async function removeItemFromCart(itemId) {
 }
 
 async function checkoutCart() {
+  const selectedRegion = getSelectedRegion();
+  const selectedProvince = getSelectedProvince();
+  const selectedCity = getSelectedCity();
+  const selectedBarangay = getSelectedBarangay();
+
+  if (!cartItems.value.length) {
+    feedback.value = 'Your cart is empty.';
+    return;
+  }
+
+  if (
+    !checkoutForm.fullName.trim() ||
+    !checkoutForm.contactNumber.trim() ||
+    !checkoutForm.streetAddress.trim() ||
+    !selectedRegion ||
+    !selectedProvince ||
+    !selectedCity ||
+    !selectedBarangay
+  ) {
+    feedback.value = 'Please complete full name, contact number, and full delivery address before checkout.';
+    return;
+  }
+
   try {
-    await placeMyOrder();
+    await placeMyOrder({
+      fullName: checkoutForm.fullName.trim(),
+      contactNumber: checkoutForm.contactNumber.trim(),
+      streetAddress: checkoutForm.streetAddress.trim(),
+      regionName: selectedRegion.region_name,
+      provinceName: selectedProvince.province_name,
+      cityName: selectedCity.city_name,
+      barangayName: selectedBarangay.brgy_name,
+      paymentMethod: 'cash_on_delivery',
+      deliveryNotes: checkoutForm.deliveryNotes.trim(),
+    });
+
     feedback.value = 'Order placed successfully.';
     await Promise.all([loadCart(), loadOrders(), loadMarketplace(), loadProducts()]);
     activeTab.value = 'orders';
@@ -166,6 +291,11 @@ async function submitProduct() {
 }
 
 onMounted(async () => {
+  const currentUser = getUser() || {};
+  checkoutForm.fullName = String(currentUser.fullName || currentUser.profileName || '').trim();
+  checkoutForm.contactNumber = String(currentUser.contactNumber || '').trim();
+
+  await loadPhAddressSelectors();
   await Promise.all([loadProducts(), loadMarketplace(), loadCart(), loadOrders()]);
 });
 </script>
@@ -189,10 +319,10 @@ onMounted(async () => {
         Marketplace
       </button>
       <button type="button" :class="{ active: activeTab === 'cart' }" @click="activeTab = 'cart'">
-        My Cart
+        My Cart ({{ totalCartQuantity() }})
       </button>
       <button type="button" :class="{ active: activeTab === 'orders' }" @click="activeTab = 'orders'">
-        Orders
+        Orders ({{ orderCount }})
       </button>
     </nav>
 
@@ -289,44 +419,162 @@ onMounted(async () => {
       <p v-if="loadingCart" class="muted">Loading cart...</p>
       <p v-else-if="!cartItems.length" class="muted">Cart is empty.</p>
 
-      <div v-else class="products">
-        <article v-for="item in cartItems" :key="item.id" class="product-card">
-          <img v-if="item.productImagePath" :src="toImageUrl(item.productImagePath)" alt="Product" />
-          <div>
-            <h4>{{ item.productName }}</h4>
-            <p>Trader: {{ item.traderName }}</p>
-            <p>Size: {{ item.size }}</p>
-            <p>Length: {{ item.lengthCm ?? 'N/A' }} cm</p>
-            <p>Qty: {{ item.quantity }}</p>
-            <button type="button" class="mini-btn danger" @click="removeItemFromCart(item.id)">
-              Remove
-            </button>
-          </div>
-        </article>
+      <div v-else class="checkout-wrap">
+        <h3 class="checkout-title">Checkout Details</h3>
+        <p v-if="loadingPhAddress" class="muted">Loading Philippine address selectors...</p>
 
-        <button type="button" class="checkout-btn" @click="checkoutCart">Place Order</button>
+        <form class="checkout-form" @submit.prevent="checkoutCart">
+          <label>
+            Full Name
+            <input v-model="checkoutForm.fullName" type="text" placeholder="Receiver full name" required />
+          </label>
+
+          <label>
+            Contact Number
+            <input v-model="checkoutForm.contactNumber" type="text" placeholder="09xxxxxxxxx" required />
+          </label>
+
+          <label>
+            Region
+            <select v-model="checkoutForm.regionCode" required @change="onRegionChange">
+              <option disabled value="">Select region</option>
+              <option v-for="region in regions" :key="region.region_code" :value="region.region_code">
+                {{ region.region_name }}
+              </option>
+            </select>
+          </label>
+
+          <label>
+            Province
+            <select v-model="checkoutForm.provinceCode" required @change="onProvinceChange">
+              <option disabled value="">Select province</option>
+              <option
+                v-for="province in filteredProvinces"
+                :key="province.province_code"
+                :value="province.province_code"
+              >
+                {{ province.province_name }}
+              </option>
+            </select>
+          </label>
+
+          <label>
+            City / Municipality
+            <select v-model="checkoutForm.cityCode" required @change="onCityChange">
+              <option disabled value="">Select city/municipality</option>
+              <option v-for="city in filteredCities" :key="city.city_code" :value="city.city_code">
+                {{ city.city_name }}
+              </option>
+            </select>
+          </label>
+
+          <label>
+            Barangay
+            <select v-model="checkoutForm.barangayCode" required>
+              <option disabled value="">Select barangay</option>
+              <option v-for="barangay in filteredBarangays" :key="barangay.brgy_code" :value="barangay.brgy_code">
+                {{ barangay.brgy_name }}
+              </option>
+            </select>
+          </label>
+
+          <label class="full-width">
+            Street / Unit / Landmark
+            <input v-model="checkoutForm.streetAddress" type="text" placeholder="House No., street, landmark" required />
+          </label>
+
+          <label>
+            Payment Method
+            <input v-model="checkoutForm.paymentMethod" type="text" disabled />
+          </label>
+
+          <label class="full-width">
+            Delivery Notes
+            <textarea
+              v-model="checkoutForm.deliveryNotes"
+              rows="3"
+              placeholder="Notes for rider (optional): nearest landmark, gate color, preferred call/text"
+            ></textarea>
+          </label>
+
+          <div class="full-width">
+            <button type="submit" class="checkout-btn">Place COD Order</button>
+          </div>
+        </form>
+
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Trader</th>
+                <th>Size</th>
+                <th>Length</th>
+                <th>Qty</th>
+                <th>Stock Left</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in cartItems" :key="item.id">
+                <td>{{ item.productName }}</td>
+                <td>{{ item.traderName }}</td>
+                <td>{{ item.size }}</td>
+                <td>{{ item.lengthCm ?? 'N/A' }} cm</td>
+                <td>{{ item.quantity }}</td>
+                <td>{{ item.stockQuantity }}</td>
+                <td>
+                  <button type="button" class="mini-btn danger" @click="removeItemFromCart(item.id)">
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </section>
 
     <section v-if="activeTab === 'orders'" class="list-panel">
-      <h2>My Orders</h2>
+      <h2>My Orders ({{ orderCount }})</h2>
       <p v-if="loadingOrders" class="muted">Loading orders...</p>
       <p v-else-if="!orders.length" class="muted">No orders yet.</p>
 
-      <div v-else class="orders-grid">
-        <article v-for="order in orders" :key="order.id" class="order-card">
-          <div class="order-head">
-            <h3>Order #{{ order.id }}</h3>
-            <span class="badge">{{ order.status }}</span>
-          </div>
-          <p class="meta">Created: {{ new Date(order.createdAt).toLocaleString() }}</p>
-
-          <div class="order-items">
-            <p v-for="item in order.items" :key="item.id">
-              {{ item.productName }} ({{ item.size }}) x {{ item.quantity }} | {{ item.traderName }}
-            </p>
-          </div>
-        </article>
+      <div v-else class="table-wrap">
+        <table class="data-table orders-table">
+          <thead>
+            <tr>
+              <th>Order #</th>
+              <th>Date</th>
+              <th>Status</th>
+              <th>Full Name</th>
+              <th>Contact</th>
+              <th>Address</th>
+              <th>Payment</th>
+              <th>Delivery Notes</th>
+              <th>Items</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="order in orders" :key="order.id">
+              <td>{{ order.id }}</td>
+              <td>{{ new Date(order.createdAt).toLocaleString() }}</td>
+              <td>
+                <span class="badge">{{ order.status }}</span>
+              </td>
+              <td>{{ order.customerFullName || '-' }}</td>
+              <td>{{ order.customerContactNumber || '-' }}</td>
+              <td>{{ order.deliveryFullAddress || '-' }}</td>
+              <td>{{ order.paymentMethod || 'cash_on_delivery' }}</td>
+              <td>{{ order.deliveryNotes || '-' }}</td>
+              <td>
+                <p v-for="item in order.items" :key="item.id" class="order-item-line">
+                  {{ item.productName }} ({{ item.size }}) x {{ item.quantity }} | {{ item.traderName }}
+                </p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </section>
   </section>
@@ -398,7 +646,8 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
   border: 1px solid rgba(133, 229, 197, 0.45);
   border-radius: 10px;
@@ -585,28 +834,62 @@ button:disabled {
   cursor: pointer;
 }
 
-.orders-grid {
+.checkout-wrap {
   margin-top: 0.85rem;
   display: grid;
-  gap: 0.8rem;
+  gap: 0.9rem;
 }
 
-.order-card {
-  border: 1px solid rgba(123, 225, 191, 0.28);
+.checkout-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.checkout-form {
+  border: 1px solid rgba(126, 223, 192, 0.35);
   border-radius: 14px;
-  background: rgba(9, 34, 46, 0.66);
+  background: rgba(4, 28, 39, 0.62);
   padding: 0.8rem;
-}
-
-.order-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.7rem;
 }
 
-.order-head h3 {
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid rgba(126, 223, 192, 0.26);
+  border-radius: 14px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+  background: rgba(7, 29, 40, 0.6);
+}
+
+.data-table th,
+.data-table td {
+  border-bottom: 1px solid rgba(126, 223, 192, 0.22);
+  padding: 0.55rem 0.6rem;
+  text-align: left;
+  font-size: 0.8rem;
+  vertical-align: top;
+}
+
+.data-table th {
+  color: #d9fff0;
+  background: rgba(10, 56, 71, 0.7);
+  font-weight: 800;
+}
+
+.order-item-line {
   margin: 0;
+  color: #d2ffef;
 }
 
 .badge {
@@ -620,12 +903,11 @@ button:disabled {
   text-transform: uppercase;
 }
 
-.order-items p {
-  margin: 0.35rem 0 0;
-  color: #d2ffef;
-}
-
 @media (max-width: 560px) {
+  .checkout-form {
+    grid-template-columns: 1fr;
+  }
+
   .product-card {
     grid-template-columns: 1fr;
   }

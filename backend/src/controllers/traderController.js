@@ -356,8 +356,49 @@ export async function removeCartItem(req, res) {
 }
 
 export async function placeOrder(req, res) {
+  const fullName = String(req.body?.fullName || '').trim();
+  const contactNumber = String(req.body?.contactNumber || '').trim();
+  const streetAddress = String(req.body?.streetAddress || '').trim();
+  const regionName = String(req.body?.regionName || '').trim();
+  const provinceName = String(req.body?.provinceName || '').trim();
+  const cityName = String(req.body?.cityName || '').trim();
+  const barangayName = String(req.body?.barangayName || '').trim();
+  const paymentMethod = String(req.body?.paymentMethod || '').trim().toLowerCase();
+  const deliveryNotes = String(req.body?.deliveryNotes || '').trim();
+
+  if (
+    !fullName ||
+    !contactNumber ||
+    !streetAddress ||
+    !regionName ||
+    !provinceName ||
+    !cityName ||
+    !barangayName
+  ) {
+    return res.status(400).json({
+      error:
+        'fullName, contactNumber, streetAddress, regionName, provinceName, cityName, and barangayName are required.',
+    });
+  }
+
+  if (paymentMethod && paymentMethod !== 'cash_on_delivery') {
+    return res.status(400).json({ error: 'Only cash_on_delivery payment method is supported.' });
+  }
+
+  const fullAddress = `${streetAddress}, ${barangayName}, ${cityName}, ${provinceName}, ${regionName}`;
+
   try {
-    const orderId = await placeOrderFromCart(req.auth.id);
+    const orderId = await placeOrderFromCart(req.auth.id, {
+      fullName,
+      contactNumber,
+      streetAddress,
+      regionName,
+      provinceName,
+      cityName,
+      barangayName,
+      fullAddress,
+      deliveryNotes,
+    });
     return res.status(201).json({ message: 'Order placed successfully.', orderId });
   } catch (error) {
     return res.status(400).json({ error: error.message || 'Could not place order.' });
@@ -374,6 +415,16 @@ export async function listOrders(req, res) {
         ordersMap.set(row.order_id, {
           id: row.order_id,
           status: row.status,
+          customerFullName: row.customer_full_name || '',
+          customerContactNumber: row.customer_contact_number || '',
+          deliveryRegion: row.delivery_region || '',
+          deliveryProvince: row.delivery_province || '',
+          deliveryCity: row.delivery_city || '',
+          deliveryBarangay: row.delivery_barangay || '',
+          deliveryStreetAddress: row.delivery_street_address || '',
+          deliveryFullAddress: row.delivery_full_address || '',
+          paymentMethod: row.payment_method || 'cash_on_delivery',
+          deliveryNotes: row.delivery_notes || '',
           createdAt: row.order_created_at,
           items: [],
         });
