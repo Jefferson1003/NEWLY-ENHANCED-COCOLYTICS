@@ -175,3 +175,29 @@ export function placeMyOrder(payload) {
 export function fetchMyOrders() {
   return request('/api/trader/orders');
 }
+
+export function fetchTraderMessageContacts() {
+  return request('/api/trader/messages/contacts');
+}
+
+export function fetchMessagesWithTrader(traderId) {
+  return request(`/api/trader/messages/${traderId}`);
+}
+
+export function sendMessageToTrader(traderId, messageText) {
+  return request(`/api/trader/messages/${traderId}`, {
+    method: 'POST',
+    body: JSON.stringify({ messageText }),
+  });
+}
+
+export function getTraderMessageStreamUrl() {
+  const token = getToken();
+  const streamPath = '/api/trader/messages/stream';
+  if (!token) {
+    return `${API_BASE_URL}${streamPath}`;
+  }
+
+  const separator = streamPath.includes('?') ? '&' : '?';
+  return `${API_BASE_URL}${streamPath}${separator}token=${encodeURIComponent(token)}`;
+}

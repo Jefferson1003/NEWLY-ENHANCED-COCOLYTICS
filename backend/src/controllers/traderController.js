@@ -3,6 +3,16 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import multer from 'multer';
 import {
+  createMessageBetweenTraders,
+  listMessagesBetweenTraders,
+  listTraderMessageContacts,
+} from '../models/chatModel.js';
+import {
+  addTraderStreamClient,
+  pushTraderEvent,
+  removeTraderStreamClient,
+} from '../realtime/messageStream.js';
+import {
   addToCart,
   findMarketplaceRows,
   findMarketplaceRowsByTraderId,
@@ -561,5 +571,149 @@ export async function listOrders(req, res) {
     return res.status(200).json({ orders: Array.from(ordersMap.values()) });
   } catch {
     return res.status(500).json({ error: 'Could not fetch orders.' });
+  }
+}
+
+export async function listMessageContacts(req, res) {
+  try {
+    const rows = await listTraderMessageContacts(req.auth.id);
+    return res.status(200).json({
+      contacts: rows.map((row) => ({
+        traderId: row.trader_id,
+        traderName: row.trader_name,
+        profileImagePath: row.profile_image_path || '',
+        conversationId: row.conversation_id || null,
+        lastMessage: row.last_message || '',
+        lastSenderId: row.last_sender_id || null,
+        lastMessageAt: row.last_message_at || null,
+        unreadCount: Number(row.unread_count || 0),
+      })),
+    });
+  } catch {
+    return res.status(200).json({ contacts: [] });
+  }
+}
+
+export function streamMessageEvents(req, res) {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  addTraderStreamClient(req.auth.id, res);
+
+  // Keep the connection alive for proxies that close idle streams.
+  const keepAliveTimer = setInterval(() => {
+    res.write('event: heartbeat\n');
+    res.write(`data: ${JSON.stringify({ ts: Date.now() })}\n\n`);
+  }, 25000);
+
+  req.on('close', () => {
+    clearInterval(keepAliveTimer);
+    removeTraderStreamClient(req.auth.id, res);
+  });
+}
+
+export async function listMessagesWithTrader(req, res) {
+  const otherTraderId = Number(req.params.traderId);
+  if (!Number.isInteger(otherTraderId) || otherTraderId <= 0) {
+    return res.status(400).json({ error: 'Invalid trader ID.' });
+  }
+
+  if (otherTraderId === req.auth.id) {
+    return res.status(400).json({ error: 'You cannot message yourself.' });
+  }
+
+  try {
+    const otherTrader = await findUserById(otherTraderId);
+    if (!otherTrader) {
+      return res.status(200).json({
+        traderId: otherTraderId,
+        messages: [],
+      });
+    }
+
+    const rows = await listMessagesBetweenTraders(req.auth.id, otherTraderId);
+    console.info('[chat] listMessagesWithTrader', {
+      currentTraderId: req.auth.id,
+      otherTraderId,
+      count: rows.length,
+    });
+    return res.status(200).json({
+      traderId: otherTraderId,
+      messages: rows.map((row) => ({
+        id: row.id,
+        conversationId: row.conversation_id,
+        senderId: row.sender_id,
+        receiverId: row.receiver_id,
+        messageText: row.message_text,
+        isRead: Boolean(row.is_read),
+        createdAt: row.created_at,
+      })),
+    });
+  } catch (error) {
+    console.error('[chat] listMessagesWithTrader failed', {
+      currentTraderId: req.auth.id,
+      otherTraderId,
+      error: error.message,
+    });
+    return res.status(500).json({ error: 'Could not fetch messages.' });
+  }
+}
+
+export async function sendMessageToTrader(req, res) {
+  const otherTraderId = Number(req.params.traderId);
+  const messageText = String(req.body?.messageText || '').trim();
+
+  if (!Number.isInteger(otherTraderId) || otherTraderId <= 0) {
+    return res.status(400).json({ error: 'Invalid trader ID.' });
+  }
+
+  if (otherTraderId === req.auth.id) {
+    return res.status(400).json({ error: 'You cannot message yourself.' });
+  }
+
+  if (!messageText) {
+    return res.status(400).json({ error: 'messageText is required.' });
+  }
+
+  if (messageText.length > 2000) {
+    return res.status(400).json({ error: 'messageText must be 2000 characters or less.' });
+  }
+
+  try {
+    const otherTrader = await findUserById(otherTraderId);
+    if (!otherTrader || otherTrader.role !== 'trader') {
+      return res.status(404).json({ error: 'Trader not found.' });
+    }
+
+    const row = await createMessageBetweenTraders(req.auth.id, otherTraderId, messageText);
+    const messagePayload = {
+      id: row.id,
+      conversationId: row.conversation_id,
+      senderId: row.sender_id,
+      receiverId: row.receiver_id,
+      messageText: row.message_text,
+      isRead: Boolean(row.is_read),
+      createdAt: row.created_at,
+    };
+
+    pushTraderEvent(req.auth.id, 'chat-message', {
+      type: 'message:new',
+      partnerId: otherTraderId,
+      message: messagePayload,
+    });
+
+    pushTraderEvent(otherTraderId, 'chat-message', {
+      type: 'message:new',
+      partnerId: req.auth.id,
+      message: messagePayload,
+    });
+
+    return res.status(201).json({
+      message: messagePayload,
+    });
+  } catch {
+    return res.status(500).json({ error: 'Could not send message.' });
   }
 }

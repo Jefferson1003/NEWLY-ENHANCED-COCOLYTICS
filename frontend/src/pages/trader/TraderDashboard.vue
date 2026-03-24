@@ -3,7 +3,7 @@ import { ref, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import ConfirmationModal from '../../components/ConfirmationModal.vue';
 import TraderSidebar from '../../components/TraderSidebar.vue';
-import { fetchMe, fetchTraderProducts } from '../../services/api';
+import { fetchMe, fetchTraderMessageContacts, fetchTraderProducts } from '../../services/api';
 import { clearSession, getUser, SESSION_UPDATED_EVENT } from '../../services/session';
 
 const router = useRouter();
@@ -15,8 +15,10 @@ const deferredPrompt = ref(null);
 const installReady = ref(false);
 const isInstalled = ref(false);
 const lowStockCount = ref(0);
+const unreadMessagesCount = ref(0);
 
 const INVENTORY_UPDATED_EVENT = 'cocolytics-inventory-updated';
+const MESSAGE_UPDATED_EVENT = 'cocolytics-messages-updated';
 
 function handleBeforeInstallPrompt(event) {
   event.preventDefault();
@@ -57,6 +59,19 @@ async function loadLowStockCount() {
     lowStockCount.value = products.filter((product) => Number(product.stockQuantity || 0) <= 10).length;
   } catch {
     lowStockCount.value = 0;
+  }
+}
+
+async function loadUnreadMessagesCount() {
+  try {
+    const data = await fetchTraderMessageContacts();
+    const contacts = data.contacts || [];
+    unreadMessagesCount.value = contacts.reduce(
+      (total, contact) => total + Number(contact.unreadCount || 0),
+      0
+    );
+  } catch {
+    unreadMessagesCount.value = 0;
   }
 }
 
@@ -117,6 +132,7 @@ onMounted(() => {
   syncProfileFromSession();
   loadProfile();
   loadLowStockCount();
+  loadUnreadMessagesCount();
 
   const standaloneMode = window.matchMedia?.('(display-mode: standalone)')?.matches;
   isInstalled.value = Boolean(standaloneMode || window.navigator.standalone);
@@ -125,6 +141,7 @@ onMounted(() => {
   window.addEventListener('appinstalled', handleAppInstalled);
   window.addEventListener(SESSION_UPDATED_EVENT, syncProfileFromSession);
   window.addEventListener(INVENTORY_UPDATED_EVENT, loadLowStockCount);
+  window.addEventListener(MESSAGE_UPDATED_EVENT, loadUnreadMessagesCount);
 });
 
 onUnmounted(() => {
@@ -132,6 +149,7 @@ onUnmounted(() => {
   window.removeEventListener('appinstalled', handleAppInstalled);
   window.removeEventListener(SESSION_UPDATED_EVENT, syncProfileFromSession);
   window.removeEventListener(INVENTORY_UPDATED_EVENT, loadLowStockCount);
+  window.removeEventListener(MESSAGE_UPDATED_EVENT, loadUnreadMessagesCount);
 });
 </script>
 
@@ -142,6 +160,7 @@ onUnmounted(() => {
       :user-email="profile?.email || ''"
       :profile-image-path="profile?.profileImagePath || ''"
       :low-stock-count="lowStockCount"
+      :unread-messages-count="unreadMessagesCount"
       :is-open="sidebarOpen"
       @logout="requestLogout"
       @close="closeSidebar"

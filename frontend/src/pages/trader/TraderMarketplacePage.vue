@@ -397,15 +397,22 @@ function goToBrowseProducts(traderId) {
 }
 
 function messageTrader(trader) {
-  const rawNumber = String(trader.contactNumber || '').replace(/\D/g, '');
-  if (!rawNumber) {
-    feedback.value = 'This trader has no contact number yet.';
+  const traderId = Number(trader?.traderId);
+  if (!Number.isInteger(traderId) || traderId <= 0) {
+    feedback.value = 'Invalid trader selected.';
     return;
   }
 
-  const international = rawNumber.startsWith('0') ? `63${rawNumber.slice(1)}` : rawNumber;
-  const message = encodeURIComponent(`Hello ${trader.name || 'Trader'}, I want to ask about your products.`);
-  window.open(`https://wa.me/${international}?text=${message}`, '_blank', 'noopener,noreferrer');
+  const currentUserId = Number(getUser()?.id || 0);
+  if (currentUserId > 0 && traderId === currentUserId) {
+    feedback.value = 'You cannot message your own account.';
+    return;
+  }
+
+  router.push({
+    name: 'trader-messages',
+    query: { traderId: String(traderId) },
+  });
 }
 
 async function removeItemFromCart(itemId) {

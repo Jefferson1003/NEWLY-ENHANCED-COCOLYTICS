@@ -6,11 +6,15 @@ import {
   getTraderProfile,
   listCart,
   listMarketplace,
+  listMessageContacts,
   listPublicMarketplaceTraders,
+  listMessagesWithTrader,
   listOrders,
   listMyProducts,
   placeOrder,
   removeCartItem,
+  sendMessageToTrader,
+  streamMessageEvents,
   updateProduct,
   updateCartItemQuantity,
   updateTraderProfile,
@@ -39,6 +43,10 @@ traderRouter.post('/profile/image', (req, res, next) => {
 }, updateTraderProfileImage);
 traderRouter.get('/products', listMyProducts);
 traderRouter.get('/marketplace/traders', listMarketplace);
+traderRouter.get('/messages/contacts', listMessageContacts);
+traderRouter.get('/messages/stream', streamMessageEvents);
+traderRouter.get('/messages/:traderId', listMessagesWithTrader);
+traderRouter.post('/messages/:traderId', sendMessageToTrader);
 traderRouter.get('/cart', listCart);
 traderRouter.post('/cart', addItemToCart);
 traderRouter.delete('/cart/:id', removeCartItem);

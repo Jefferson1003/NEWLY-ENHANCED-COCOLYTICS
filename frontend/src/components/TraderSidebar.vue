@@ -18,6 +18,14 @@ defineProps({
     type: Boolean,
     default: true,
   },
+  lowStockCount: {
+    type: Number,
+    default: 0,
+  },
+  unreadMessagesCount: {
+    type: Number,
+    default: 0,
+  },
 });
 
 const emit = defineEmits(['logout', 'close']);
@@ -45,7 +53,15 @@ const emit = defineEmits(['logout', 'close']);
       <router-link to="/trader/dashboard" @click="emit('close')">Dashboard</router-link>
       <router-link to="/trader/profile" @click="emit('close')">Profile</router-link>
       <router-link to="/trader/marketplace" @click="emit('close')">Marketplace</router-link>
+      <router-link to="/trader/inventory" class="inventory-link" @click="emit('close')">
+        <span>Inventory</span>
+        <span v-if="lowStockCount > 0" class="low-stock-badge">{{ lowStockCount }} low</span>
+      </router-link>
       <router-link to="/trader/browse-products" @click="emit('close')">Browse Products</router-link>
+      <router-link to="/trader/messages" class="inventory-link" @click="emit('close')">
+        <span>Messages</span>
+        <span v-if="unreadMessagesCount > 0" class="low-stock-badge">{{ unreadMessagesCount }}</span>
+      </router-link>
     </nav>
 
     <button type="button" class="logout" @click="emit('logout')">Logout</button>
@@ -147,6 +163,23 @@ h1 {
   padding: 0.6rem 0.7rem;
   font-weight: 700;
   font-size: 0.86rem;
+}
+
+.inventory-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.low-stock-badge {
+  border: 1px solid rgba(255, 192, 134, 0.55);
+  border-radius: 999px;
+  background: rgba(173, 82, 18, 0.85);
+  color: #fff2e1;
+  font-size: 0.68rem;
+  padding: 0.1rem 0.42rem;
+  font-weight: 800;
 }
 
 .nav-links a.router-link-active {

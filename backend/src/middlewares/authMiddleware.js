@@ -9,7 +9,9 @@ export function createToken(user) {
 
 export function authRequired(req, res, next) {
   const rawHeader = req.headers.authorization || '';
-  const token = rawHeader.startsWith('Bearer ') ? rawHeader.slice(7) : '';
+  const headerToken = rawHeader.startsWith('Bearer ') ? rawHeader.slice(7) : '';
+  const queryToken = typeof req.query?.token === 'string' ? req.query.token : '';
+  const token = headerToken || queryToken;
 
   if (!token) {
     return res.status(401).json({ error: 'Missing authentication token.' });
