@@ -11,6 +11,22 @@ const profile = ref(null);
 const feedback = ref('');
 const sidebarOpen = ref(false);
 const showLogoutConfirm = ref(false);
+const deferredPrompt = ref(null);
+const installReady = ref(false);
+const isInstalled = ref(false);
+
+function handleBeforeInstallPrompt(event) {
+  event.preventDefault();
+  deferredPrompt.value = event;
+  installReady.value = true;
+}
+
+function handleAppInstalled() {
+  feedback.value = 'Cocolytics is installed. You can launch it from your home screen.';
+  installReady.value = false;
+  isInstalled.value = true;
+  deferredPrompt.value = null;
+}
 
 function syncProfileFromSession() {
   const user = getUser();
@@ -57,13 +73,48 @@ function closeSidebar() {
   sidebarOpen.value = false;
 }
 
+async function installApp() {
+  if (isInstalled.value) {
+    feedback.value = 'Cocolytics is already installed on this device.';
+    return;
+  }
+
+  if (!deferredPrompt.value) {
+    const userAgent = window.navigator.userAgent || '';
+    const isiOS = /iPad|iPhone|iPod/.test(userAgent);
+
+    feedback.value = isiOS
+      ? 'On iPhone: tap Share, then choose Add to Home Screen.'
+      : 'Install prompt is not ready yet. In Chrome/Edge, open browser menu and tap Install app.';
+    return;
+  }
+
+  deferredPrompt.value.prompt();
+  const choiceResult = await deferredPrompt.value.userChoice;
+  feedback.value =
+    choiceResult.outcome === 'accepted'
+      ? 'Install accepted. Preparing your mobile app experience.'
+      : 'Install dismissed. You can trigger it again later.';
+
+  deferredPrompt.value = null;
+  installReady.value = false;
+}
+
 onMounted(() => {
   syncProfileFromSession();
   loadProfile();
+
+  const standaloneMode = window.matchMedia?.('(display-mode: standalone)')?.matches;
+  isInstalled.value = Boolean(standaloneMode || window.navigator.standalone);
+
+  window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  window.addEventListener('appinstalled', handleAppInstalled);
   window.addEventListener(SESSION_UPDATED_EVENT, syncProfileFromSession);
 });
 
 onUnmounted(() => {
+  window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  window.removeEventListener('appinstalled', handleAppInstalled);
   window.removeEventListener(SESSION_UPDATED_EVENT, syncProfileFromSession);
 });
 </script>
@@ -90,6 +141,17 @@ onUnmounted(() => {
       <span></span>
       <span></span>
     </button>
+
+    <button
+      v-if="!isInstalled"
+      type="button"
+      class="install-btn"
+      :disabled="false"
+      @click="installApp"
+    >
+      {{ installReady ? 'Install App' : 'Install' }}
+    </button>
+
     <div v-if="sidebarOpen" class="overlay" @click="closeSidebar"></div>
 
     <main class="trader-page">
@@ -148,6 +210,26 @@ onUnmounted(() => {
   height: 2px;
   border-radius: 999px;
   background: #e7fff4;
+}
+
+.install-btn {
+  position: fixed;
+  top: 0.85rem;
+  right: 0.85rem;
+  z-index: 35;
+  border: 1px solid rgba(131, 236, 200, 0.46);
+  border-radius: 8px;
+  background: rgba(15, 89, 70, 0.95);
+  color: #e7fff4;
+  height: 34px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.76rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.install-btn:hover {
+  background: rgba(17, 104, 81, 0.98);
 }
 
 .feedback {

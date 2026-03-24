@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { fetchTraderProfile } from '../../services/api';
 import { loadPhAddressData, normalizeByName } from '../../services/phAddress';
 import { getCheckoutAddress, saveCheckoutAddress } from '../../services/checkoutAddress';
 import { getUser } from '../../services/session';
@@ -93,9 +94,22 @@ async function loadAddressData() {
 
     const savedAddress = getCheckoutAddress();
     const user = getUser() || {};
+    let profileUser = null;
 
-    form.fullName = String(savedAddress?.fullName || user.fullName || user.profileName || '').trim();
-    form.contactNumber = String(savedAddress?.contactNumber || user.contactNumber || '').trim();
+    try {
+      const profileData = await fetchTraderProfile();
+      profileUser = profileData?.user || null;
+    } catch {
+      profileUser = null;
+    }
+
+    const profileFullName = String(
+      profileUser?.profileName || profileUser?.fullName || user.fullName || user.profileName || ''
+    ).trim();
+    const profileContactNumber = String(profileUser?.contactNumber || user.contactNumber || '').trim();
+
+    form.fullName = String(savedAddress?.fullName || profileFullName).trim();
+    form.contactNumber = profileContactNumber || String(savedAddress?.contactNumber || '').trim();
     form.streetAddress = String(savedAddress?.streetAddress || '').trim();
     form.regionCode = String(savedAddress?.regionCode || '').trim();
     form.provinceCode = String(savedAddress?.provinceCode || '').trim();

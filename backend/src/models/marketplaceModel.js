@@ -76,12 +76,17 @@ export async function addToCart(buyerId, productId, quantity) {
     `
       INSERT INTO cart_items (buyer_id, product_id, quantity)
       VALUES (?, ?, ?)
-      ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)
+      ON DUPLICATE KEY UPDATE
+        quantity = quantity + VALUES(quantity),
+        id = LAST_INSERT_ID(id)
     `,
     [buyerId, productId, quantity]
   );
 
-  return result.affectedRows;
+  return {
+    affectedRows: result.affectedRows,
+    cartItemId: Number(result.insertId || 0),
+  };
 }
 
 export async function listCartByBuyerId(buyerId) {

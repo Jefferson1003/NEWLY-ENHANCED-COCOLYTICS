@@ -40,6 +40,7 @@ const loadingOrders = ref(false);
 const selectedCartItemIds = ref([]);
 const currentAddress = ref(null);
 const quantityUpdatingIds = ref([]);
+const showCheckoutConfirmModal = ref(false);
 
 const orderCount = computed(() => orders.value.length);
 
@@ -138,6 +139,63 @@ function toggleAllCartSelections() {
 
 function openAddressEditor() {
   router.push({ name: 'trader-address-editor' });
+}
+
+function formatOrderStatus(status) {
+  const normalized = String(status || '').trim().toLowerCase();
+  if (!normalized) return 'Unknown';
+  return normalized.split('_').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+}
+
+function formatOrderDate(dateValue) {
+  return new Date(dateValue).toLocaleString();
+}
+
+function openCheckoutConfirmation() {
+  refreshSavedAddress();
+
+  if (!cartItems.value.length) {
+    feedback.value = 'Your cart is empty.';
+    return;
+  }
+
+  if (!selectedCartItems.value.length) {
+    feedback.value = 'Please select at least one cart item.';
+    return;
+  }
+
+  const address = currentAddress.value;
+  if (
+    !address ||
+    !address.fullName ||
+    !address.contactNumber ||
+    !address.streetAddress ||
+    !address.regionName ||
+    !address.provinceName ||
+    !address.cityName ||
+    !address.barangayName
+  ) {
+    feedback.value = 'Please save your delivery address first.';
+    return;
+  }
+
+  showCheckoutConfirmModal.value = true;
+}
+
+function closeCheckoutConfirmation() {
+  showCheckoutConfirmModal.value = false;
+}
+
+async function confirmCheckoutSelection() {
+  if (!selectedCartItems.value.length) {
+    feedback.value = 'Please keep at least one item selected to checkout.';
+    return;
+  }
+
+  const success = await checkoutCart();
+  if (success) {
+    showCheckoutConfirmModal.value = false;
+  }
 }
 
 function openProductFromCart(item) {
@@ -300,12 +358,12 @@ async function checkoutCart() {
 
   if (!cartItems.value.length) {
     feedback.value = 'Your cart is empty.';
-    return;
+    return false;
   }
 
   if (!selectedCartItems.value.length) {
     feedback.value = 'Please select at least one cart item.';
-    return;
+    return false;
   }
 
   const address = currentAddress.value;
@@ -320,7 +378,7 @@ async function checkoutCart() {
     !address.barangayName
   ) {
     feedback.value = 'Please save your delivery address first.';
-    return;
+    return false;
   }
 
   try {
@@ -340,8 +398,10 @@ async function checkoutCart() {
     feedback.value = 'Order placed successfully.';
     await Promise.all([loadCart(), loadOrders(), loadMarketplace(), loadProducts()]);
     activeTab.value = 'orders';
+    return true;
   } catch (error) {
     feedback.value = error.message;
+    return false;
   }
 }
 
@@ -396,6 +456,14 @@ onMounted(async () => {
 
   refreshSavedAddress();
   await Promise.all([loadProducts(), loadMarketplace(), loadCart(), loadOrders()]);
+
+  const selectedCartItemIdFromQuery = Number(route.query.selectCartItemId);
+  if (Number.isInteger(selectedCartItemIdFromQuery) && selectedCartItemIdFromQuery > 0) {
+    const exists = cartItems.value.some((item) => item.id === selectedCartItemIdFromQuery);
+    if (exists && !selectedCartItemIds.value.includes(selectedCartItemIdFromQuery)) {
+      selectedCartItemIds.value = [...selectedCartItemIds.value, selectedCartItemIdFromQuery];
+    }
+  }
 });
 </script>
 
@@ -622,7 +690,7 @@ onMounted(async () => {
           </ul>
           <p v-else class="muted">Select cart cards to checkout.</p>
 
-          <button type="button" class="checkout-btn" @click="checkoutCart">Checkout Selected</button>
+          <button type="button" class="checkout-btn" @click="openCheckoutConfirmation">Checkout Selected</button>
         </section>
       </div>
     </section>
@@ -632,43 +700,137 @@ onMounted(async () => {
       <p v-if="loadingOrders" class="muted">Loading orders...</p>
       <p v-else-if="!orders.length" class="muted">No orders yet.</p>
 
-      <div v-else class="table-wrap">
-        <table class="data-table orders-table">
-          <thead>
-            <tr>
-              <th>Order #</th>
-              <th>Date</th>
-              <th>Status</th>
-              <th>Full Name</th>
-              <th>Contact</th>
-              <th>Address</th>
-              <th>Payment</th>
-              <th>Delivery Notes</th>
-              <th>Items</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="order in orders" :key="order.id">
-              <td>{{ order.id }}</td>
-              <td>{{ new Date(order.createdAt).toLocaleString() }}</td>
-              <td>
-                <span class="badge">{{ order.status }}</span>
-              </td>
-              <td>{{ order.customerFullName || '-' }}</td>
-              <td>{{ order.customerContactNumber || '-' }}</td>
-              <td>{{ order.deliveryFullAddress || '-' }}</td>
-              <td>{{ order.paymentMethod || 'cash_on_delivery' }}</td>
-              <td>{{ order.deliveryNotes || '-' }}</td>
-              <td>
-                <p v-for="item in order.items" :key="item.id" class="order-item-line">
-                  {{ item.productName }} ({{ item.size }}) x {{ item.quantity }} | {{ item.traderName }}
-                </p>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <div v-else class="orders-cards">
+        <article v-for="order in orders" :key="order.id" class="order-card">
+          <header class="order-head">
+            <div>
+              <h3>Order #{{ order.id }}</h3>
+              <p>{{ formatOrderDate(order.createdAt) }}</p>
+            </div>
+            <span class="badge">{{ formatOrderStatus(order.status) }}</span>
+          </header>
+
+          <div class="order-meta">
+            <p><strong>Full Name:</strong> {{ order.customerFullName || '-' }}</p>
+            <p><strong>Contact:</strong> {{ order.customerContactNumber || '-' }}</p>
+            <p><strong>Address:</strong> {{ order.deliveryFullAddress || '-' }}</p>
+            <p><strong>Payment:</strong> {{ order.paymentMethod || 'cash_on_delivery' }}</p>
+            <p><strong>Delivery Notes:</strong> {{ order.deliveryNotes || '-' }}</p>
+          </div>
+
+          <div class="order-items">
+            <article v-for="item in order.items" :key="item.id" class="order-item-row">
+              <img
+                v-if="item.productImagePath"
+                :src="toImageUrl(item.productImagePath)"
+                alt="Product"
+                class="cart-image"
+              />
+              <div v-else class="cart-image placeholder">No Image</div>
+
+              <div class="cart-content">
+                <p class="order-product">{{ withTrailingDots(item.productName, 36) }}</p>
+                <p class="desc-line">Size: {{ item.size || 'N/A' }} | Length: {{ item.lengthCm ?? 'N/A' }} cm</p>
+                <p class="stock-line">Trader: {{ item.traderName || 'Trader' }}</p>
+              </div>
+
+              <div class="cart-right">
+                <p class="order-qty">Qty: {{ item.quantity }}</p>
+              </div>
+            </article>
+          </div>
+        </article>
       </div>
     </section>
+
+    <div
+      v-if="showCheckoutConfirmModal"
+      class="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Confirm checkout"
+      @click.self="closeCheckoutConfirmation"
+    >
+      <section class="modal-card">
+        <header class="modal-head">
+          <h3>Confirm Your Checkout</h3>
+          <button type="button" class="mini-btn" @click="closeCheckoutConfirmation">Close</button>
+        </header>
+
+        <p class="muted modal-subtext">
+          Double check your selected items below. You can change quantity or unselect before confirming.
+        </p>
+
+        <div class="modal-item-list">
+          <article v-for="item in selectedCartItems" :key="`confirm-${item.id}`" class="cart-row confirm-row">
+            <label class="cart-check inline">
+              <input
+                type="checkbox"
+                :checked="isCartItemSelected(item.id)"
+                @change="toggleCartItemSelection(item.id)"
+              />
+            </label>
+
+            <img
+              v-if="item.productImagePath"
+              :src="toImageUrl(item.productImagePath)"
+              alt="Product"
+              class="cart-image"
+            />
+            <div v-else class="cart-image placeholder">No Image</div>
+
+            <div class="cart-content">
+              <p class="order-product">{{ withTrailingDots(item.productName, 34) }}</p>
+              <p class="desc-line">Size: {{ item.size || 'N/A' }} | Length: {{ item.lengthCm ?? 'N/A' }} cm</p>
+              <p class="stock-line">Stock Left: {{ item.stockQuantity }} | Trader: {{ item.traderName }}</p>
+            </div>
+
+            <div class="cart-right">
+              <div class="qty-controls">
+                <button
+                  type="button"
+                  class="qty-btn"
+                  :disabled="isQuantityUpdating(item.id) || Number(item.quantity) <= 1"
+                  @click="decreaseCartItemQuantity(item)"
+                >
+                  -
+                </button>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  class="qty-input"
+                  :value="item.quantity"
+                  :max="item.stockQuantity"
+                  :disabled="isQuantityUpdating(item.id)"
+                  @change="onQuantityInputChange(item, $event)"
+                />
+                <button
+                  type="button"
+                  class="qty-btn"
+                  :disabled="isQuantityUpdating(item.id) || Number(item.quantity) >= Number(item.stockQuantity)"
+                  @click="increaseCartItemQuantity(item)"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <footer class="modal-actions">
+          <p>Selected Items: {{ selectedCartItems.length }} | Total Quantity: {{ selectedCartQuantity }}</p>
+          <button
+            type="button"
+            class="checkout-btn"
+            :disabled="!selectedCartItems.length"
+            @click="confirmCheckoutSelection"
+          >
+            Confirm Checkout (To Ship)
+          </button>
+        </footer>
+      </section>
+    </div>
   </section>
 </template>
 
@@ -1114,6 +1276,144 @@ button:disabled {
   color: #d9fff0;
 }
 
+.orders-cards {
+  margin-top: 0.85rem;
+  display: grid;
+  gap: 0.8rem;
+}
+
+.order-card {
+  border: 1px solid rgba(126, 223, 192, 0.32);
+  border-radius: 14px;
+  background: rgba(5, 26, 36, 0.72);
+  padding: 0.75rem;
+}
+
+.order-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.order-head h3 {
+  margin: 0;
+  color: #dbfff3;
+}
+
+.order-head p {
+  margin: 0.2rem 0 0;
+  color: #c3f7e3;
+  font-size: 0.8rem;
+}
+
+.order-meta {
+  margin-top: 0.6rem;
+  border: 1px solid rgba(126, 223, 192, 0.2);
+  border-radius: 10px;
+  padding: 0.55rem;
+  background: rgba(4, 28, 39, 0.62);
+  display: grid;
+  gap: 0.22rem;
+}
+
+.order-meta p {
+  margin: 0;
+  color: #d7fff1;
+  font-size: 0.82rem;
+}
+
+.order-items {
+  margin-top: 0.65rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.order-item-row {
+  border: 1px solid rgba(126, 223, 192, 0.22);
+  border-radius: 10px;
+  padding: 0.5rem;
+  display: grid;
+  grid-template-columns: 68px 1fr auto;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.order-product {
+  margin: 0;
+  color: #8ce8ff;
+  font-weight: 700;
+}
+
+.order-qty {
+  margin: 0;
+  font-weight: 800;
+  color: #e4fff4;
+  font-size: 0.86rem;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 9, 16, 0.7);
+  display: grid;
+  place-items: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal-card {
+  width: min(860px, 100%);
+  border: 1px solid rgba(123, 225, 191, 0.4);
+  border-radius: 16px;
+  background: linear-gradient(165deg, rgba(8, 35, 46, 0.96), rgba(9, 59, 71, 0.92));
+  padding: 0.9rem;
+  max-height: 88vh;
+  overflow: auto;
+}
+
+.modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.modal-head h3 {
+  margin: 0;
+}
+
+.modal-subtext {
+  margin-top: 0.45rem;
+}
+
+.modal-item-list {
+  margin-top: 0.6rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.confirm-row {
+  border: 1px solid rgba(126, 223, 192, 0.2);
+  border-radius: 10px;
+  padding: 0.5rem;
+}
+
+.modal-actions {
+  margin-top: 0.8rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.modal-actions p {
+  margin: 0;
+  color: #d7fff1;
+  font-weight: 700;
+}
+
 .table-wrap {
   overflow-x: auto;
   border: 1px solid rgba(126, 223, 192, 0.26);
@@ -1182,6 +1482,15 @@ button:disabled {
   .product-card img {
     width: 100%;
     height: 120px;
+  }
+
+  .order-item-row {
+    grid-template-columns: 60px 1fr;
+  }
+
+  .modal-actions {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 </style>

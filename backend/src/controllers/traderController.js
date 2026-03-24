@@ -310,8 +310,11 @@ export async function addItemToCart(req, res) {
       return res.status(400).json({ error: 'Not enough stock for this product.' });
     }
 
-    await addToCart(req.auth.id, productId, quantity);
-    return res.status(200).json({ message: 'Product added to cart.' });
+    const result = await addToCart(req.auth.id, productId, quantity);
+    return res.status(200).json({
+      message: 'Product added to cart.',
+      cartItemId: result.cartItemId,
+    });
   } catch {
     return res.status(500).json({ error: 'Could not add to cart.' });
   }
