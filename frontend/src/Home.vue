@@ -1,14 +1,24 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import FooterSection from './components/FooterSection.vue'
 import HeaderNav from './components/HeaderNav.vue'
+import { fetchPublicMarketplaceTraders } from './services/api'
+import { getUser, isLoggedIn, setVisitTraderIntent } from './services/session'
 import timberStack1 from './assets/hero/download (3).jpg'
 import timberStack2 from './assets/hero/download (2).jpg'
 import timberStack3 from './assets/hero/download (1).jpg'
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000'
+const FILE_BASE_URL = API_BASE_URL.replace(/\/api\/?$/, '')
+
+const router = useRouter()
 const deferredPrompt = ref(null)
 const installReady = ref(false)
 const installResult = ref('')
+const traders = ref([])
+const tradersLoading = ref(false)
+const traderFeedback = ref('')
 
 const signalCards = [
   {
@@ -47,7 +57,50 @@ const installLabel = computed(() =>
   installReady.value ? 'Install Mobile App' : 'Install Option Waiting'
 )
 
+function toImageUrl(path) {
+  if (!path) return ''
+  if (path.startsWith('http')) return path
+  return `${FILE_BASE_URL}${path}`
+}
+
+async function loadTraders() {
+  tradersLoading.value = true
+  traderFeedback.value = ''
+
+  try {
+    const data = await fetchPublicMarketplaceTraders()
+    traders.value = data.traders || []
+  } catch (error) {
+    traderFeedback.value = error.message
+  } finally {
+    tradersLoading.value = false
+  }
+}
+
+function visitTrader(traderId) {
+  if (!Number.isInteger(traderId) || traderId <= 0) {
+    traderFeedback.value = 'Invalid trader selected.'
+    return
+  }
+
+  const user = getUser()
+  if (isLoggedIn() && user && (user.role === 'client' || user.role === 'trader')) {
+    router.push({ name: 'trader-visit-detail', params: { id: String(traderId) } })
+    return
+  }
+
+  if (isLoggedIn() && user && user.role === 'admin') {
+    traderFeedback.value = 'Admin accounts cannot open trader visit pages.'
+    return
+  }
+
+  setVisitTraderIntent(traderId)
+  router.push({ name: 'auth' })
+}
+
 onMounted(() => {
+  loadTraders()
+
   window.addEventListener('beforeinstallprompt', (event) => {
     event.preventDefault()
     deferredPrompt.value = event
@@ -130,6 +183,40 @@ async function installApp() {
           <li>Midday pulse: catch unusual changes through smart alerts.</li>
           <li>Evening recap: share concise summaries before close.</li>
         </ol>
+      </section>
+
+      <section id="traders" class="panel reveal-up delayed-last">
+        <h2>Visit Our Traders</h2>
+        <p>See trader profiles, contact details, product totals, and available stocks.</p>
+
+        <p v-if="tradersLoading" class="traders-muted">Loading traders...</p>
+        <p v-else-if="traderFeedback" class="traders-feedback">{{ traderFeedback }}</p>
+        <p v-else-if="!traders.length" class="traders-muted">No traders available right now.</p>
+
+        <div v-else class="traders-grid">
+          <article v-for="trader in traders" :key="trader.traderId" class="trader-card">
+            <img
+              v-if="trader.profileImagePath"
+              :src="toImageUrl(trader.profileImagePath)"
+              :alt="`${trader.name || 'Trader'} profile`"
+              class="trader-avatar"
+            />
+
+            <h3>{{ trader.name || 'Trader' }}</h3>
+            <p class="meta">Trader Number: {{ trader.traderNumber || trader.traderId }}</p>
+            <p class="meta">Contact Number: {{ trader.contactNumber || 'N/A' }}</p>
+            <p class="description">{{ trader.description || 'No description yet.' }}</p>
+
+            <div class="trader-stats">
+              <p>Products: {{ trader.totalProducts }}</p>
+              <p>Total Stocks: {{ trader.totalStocks }}</p>
+            </div>
+
+            <button type="button" class="visit-btn" @click="visitTrader(Number(trader.traderId))">
+              Visit Trader
+            </button>
+          </article>
+        </div>
       </section>
     </main>
 
@@ -344,6 +431,81 @@ h2 {
   font-size: 0.83rem;
 }
 
+.traders-muted,
+.traders-feedback {
+  margin: 0.65rem 0 0;
+  font-size: 0.86rem;
+}
+
+.traders-muted {
+  color: #c6fbe5;
+}
+
+.traders-feedback {
+  color: #b8ffdb;
+}
+
+.traders-grid {
+  margin-top: 0.75rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.62rem;
+}
+
+.trader-card {
+  border: 1px solid rgba(126, 228, 192, 0.35);
+  border-radius: 14px;
+  background: rgba(8, 35, 47, 0.68);
+  padding: 0.62rem;
+}
+
+.trader-avatar {
+  width: 100%;
+  height: 86px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid rgba(141, 241, 206, 0.42);
+}
+
+.trader-card h3 {
+  margin: 0.44rem 0 0;
+  font-size: 0.88rem;
+  line-height: 1.2;
+}
+
+.trader-card .meta {
+  margin: 0.24rem 0 0;
+  color: #ccffea;
+  font-size: 0.72rem;
+}
+
+.trader-card .description {
+  margin: 0.4rem 0 0;
+  color: #d4ffee;
+  font-size: 0.74rem;
+  line-height: 1.25;
+  min-height: 2.4em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.trader-stats {
+  margin-top: 0.5rem;
+  display: grid;
+  gap: 0.2rem;
+  color: #bbf8de;
+  font-size: 0.72rem;
+}
+
+.visit-btn {
+  margin-top: 0.52rem;
+  width: 100%;
+  padding: 0.46rem 0.6rem;
+  font-size: 0.72rem;
+}
+
 ol {
   margin: 0.7rem 0 0;
   padding-left: 1.08rem;
@@ -421,6 +583,10 @@ ol {
 
   .signal-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .traders-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>

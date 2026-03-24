@@ -1,6 +1,6 @@
 import { getToken } from './session';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 async function request(path, options = {}) {
   const token = getToken();
@@ -114,6 +114,14 @@ export function createTraderProduct(payload) {
 
 export function fetchMarketplaceTraders() {
   return request('/api/trader/marketplace/traders');
+}
+
+export function fetchPublicMarketplaceTraders() {
+  return request('/api/trader/public/marketplace/traders');
+}
+
+export function fetchPublicMarketplaceTraderDetail(traderId) {
+  return request(`/api/trader/public/marketplace/traders/${traderId}`);
 }
 
 export function fetchCartItems() {

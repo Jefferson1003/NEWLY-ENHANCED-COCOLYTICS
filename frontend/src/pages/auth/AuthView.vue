@@ -2,7 +2,7 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { login, register } from '../../services/api';
-import { saveSession } from '../../services/session';
+import { clearVisitTraderIntent, getVisitTraderIntent, saveSession } from '../../services/session';
 
 const router = useRouter();
 const mode = ref('login');
@@ -14,6 +14,17 @@ const feedback = ref('');
 const isError = ref(false);
 
 function routeAfterLogin(user) {
+  const traderIntentId = getVisitTraderIntent();
+
+  if (traderIntentId && (user.role === 'client' || user.role === 'trader')) {
+    clearVisitTraderIntent();
+    return router.push({ name: 'trader-visit-detail', params: { id: String(traderIntentId) } });
+  }
+
+  if (traderIntentId) {
+    clearVisitTraderIntent();
+  }
+
   if (user.role === 'admin') return router.push('/admin');
   if (user.role === 'trader' || user.status === 'trader') return router.push('/trader/dashboard');
   return router.push('/client');

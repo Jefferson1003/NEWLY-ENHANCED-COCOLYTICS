@@ -2,9 +2,11 @@ import { Router } from 'express';
 import {
   addItemToCart,
   addProduct,
+  getPublicMarketplaceTraderDetail,
   getTraderProfile,
   listCart,
   listMarketplace,
+  listPublicMarketplaceTraders,
   listOrders,
   listMyProducts,
   placeOrder,
@@ -17,6 +19,9 @@ import {
 import { authRequired, requireRole } from '../middlewares/authMiddleware.js';
 
 const traderRouter = Router();
+
+traderRouter.get('/public/marketplace/traders', listPublicMarketplaceTraders);
+traderRouter.get('/public/marketplace/traders/:id', getPublicMarketplaceTraderDetail);
 
 traderRouter.use(authRequired, requireRole(['trader']));
 traderRouter.get('/profile', getTraderProfile);

@@ -11,6 +11,7 @@ import TraderHomePage from './pages/trader/TraderHomePage.vue';
 import TraderProfilePage from './pages/trader/TraderProfilePage.vue';
 import TraderMarketplacePage from './pages/trader/TraderMarketplacePage.vue';
 import TraderBrowseProductsPage from './pages/trader/TraderBrowseProductsPage.vue';
+import TraderVisitDetailPage from './pages/trader/TraderVisitDetailPage.vue';
 import { getUser, isLoggedIn } from './services/session';
 
 const router = createRouter({
@@ -18,6 +19,12 @@ const router = createRouter({
   routes: [
     { path: '/', name: 'home', component: Home },
     { path: '/auth', name: 'auth', component: AuthView },
+    {
+      path: '/traders/:id',
+      name: 'trader-visit-detail',
+      component: TraderVisitDetailPage,
+      meta: { auth: true, roles: ['client', 'trader'] },
+    },
     {
       path: '/admin',
       component: AdminLayout,
@@ -67,7 +74,13 @@ router.beforeEach((to) => {
     return { name: 'auth' };
   }
 
-  if (to.meta.role && user.role !== to.meta.role) {
+  const allowedRoles = Array.isArray(to.meta.roles)
+    ? to.meta.roles
+    : to.meta.role
+      ? [to.meta.role]
+      : [];
+
+  if (allowedRoles.length && !allowedRoles.includes(user.role)) {
     if (user.role === 'admin') return { name: 'admin-dashboard' };
     if (user.role === 'trader') return { name: 'trader-dashboard' };
     return { name: 'client' };

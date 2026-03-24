@@ -5,9 +5,16 @@ import { VitePWA } from 'vite-plugin-pwa'
 // https://vitejs.dev/config/
 export default defineConfig({
   server: {
-    host: 'localhost',
+    host: true,
     port: 7904,
-    strictPort: true
+    strictPort: true,
+    allowedHosts: ['.ngrok-free.app'],
+    proxy: {
+      '/api': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+      },
+    },
   },
   plugins: [
     vue(),

@@ -5,6 +5,7 @@ import multer from 'multer';
 import {
   addToCart,
   findMarketplaceRows,
+  findMarketplaceRowsByTraderId,
   findProductById,
   listCartByBuyerId,
   listOrdersByBuyerId,
@@ -79,6 +80,75 @@ export const uploadProfileImage = multer({
   fileFilter,
   limits: { fileSize: 3 * 1024 * 1024 },
 }).single('profileImage');
+
+function mapMarketplaceRowsToTraders(rows) {
+  const tradersMap = new Map();
+
+  for (const row of rows) {
+    if (!tradersMap.has(row.trader_id)) {
+      tradersMap.set(row.trader_id, {
+        traderId: row.trader_id,
+        traderNumber: row.trader_id,
+        name: row.profile_name || row.full_name,
+        description: row.profile_description || '',
+        profileImagePath: row.profile_image_path || '',
+        contactNumber: row.contact_number || '',
+        businessAddress: row.business_address || '',
+        totalProducts: 0,
+        totalStocks: 0,
+        products: [],
+      });
+    }
+
+    if (row.product_id) {
+      const trader = tradersMap.get(row.trader_id);
+      trader.totalProducts += 1;
+      trader.totalStocks += Number(row.stock_quantity || 0);
+      trader.products.push({
+        id: row.product_id,
+        productName: row.product_name,
+        size: row.size,
+        lengthCm: row.length_cm,
+        stockQuantity: row.stock_quantity,
+        productImagePath: row.product_image_path,
+        createdAt: row.product_created_at,
+      });
+    }
+  }
+
+  return Array.from(tradersMap.values());
+}
+
+export async function listPublicMarketplaceTraders(_req, res) {
+  try {
+    const rows = await findMarketplaceRows();
+    const traders = mapMarketplaceRowsToTraders(rows);
+    return res.status(200).json({ traders });
+  } catch {
+    return res.status(500).json({ error: 'Could not load traders.' });
+  }
+}
+
+export async function getPublicMarketplaceTraderDetail(req, res) {
+  const traderId = Number(req.params.id);
+  if (!Number.isInteger(traderId) || traderId <= 0) {
+    return res.status(400).json({ error: 'Invalid trader ID.' });
+  }
+
+  try {
+    const rows = await findMarketplaceRowsByTraderId(traderId);
+    const traders = mapMarketplaceRowsToTraders(rows);
+    const trader = traders[0] || null;
+
+    if (!trader) {
+      return res.status(404).json({ error: 'Trader not found.' });
+    }
+
+    return res.status(200).json({ trader });
+  } catch {
+    return res.status(500).json({ error: 'Could not load trader details.' });
+  }
+}
 
 export async function getTraderProfile(req, res) {
   try {
@@ -205,39 +275,7 @@ export async function addProduct(req, res) {
 export async function listMarketplace(req, res) {
   try {
     const rows = await findMarketplaceRows();
-    const tradersMap = new Map();
-
-    for (const row of rows) {
-      if (!tradersMap.has(row.trader_id)) {
-        tradersMap.set(row.trader_id, {
-          traderId: row.trader_id,
-          name: row.profile_name || row.full_name,
-          description: row.profile_description || '',
-          contactNumber: row.contact_number || '',
-          businessAddress: row.business_address || '',
-          totalProducts: 0,
-          totalStocks: 0,
-          products: [],
-        });
-      }
-
-      if (row.product_id) {
-        const trader = tradersMap.get(row.trader_id);
-        trader.totalProducts += 1;
-        trader.totalStocks += Number(row.stock_quantity || 0);
-        trader.products.push({
-          id: row.product_id,
-          productName: row.product_name,
-          size: row.size,
-          lengthCm: row.length_cm,
-          stockQuantity: row.stock_quantity,
-          productImagePath: row.product_image_path,
-          createdAt: row.product_created_at,
-        });
-      }
-    }
-
-    const traders = Array.from(tradersMap.values());
+    const traders = mapMarketplaceRowsToTraders(rows);
     return res.status(200).json({ traders });
   } catch {
     return res.status(500).json({ error: 'Could not load marketplace.' });

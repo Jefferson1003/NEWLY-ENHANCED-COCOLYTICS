@@ -8,6 +8,7 @@ export async function findMarketplaceRows() {
         u.full_name,
         u.profile_name,
         u.profile_description,
+        u.profile_image_path,
         u.contact_number,
         u.business_address,
         p.id AS product_id,
@@ -22,6 +23,35 @@ export async function findMarketplaceRows() {
       WHERE u.role = 'trader'
       ORDER BY u.created_at DESC, p.created_at DESC
     `
+  );
+
+  return rows;
+}
+
+export async function findMarketplaceRowsByTraderId(traderId) {
+  const [rows] = await pool.execute(
+    `
+      SELECT
+        u.id AS trader_id,
+        u.full_name,
+        u.profile_name,
+        u.profile_description,
+        u.profile_image_path,
+        u.contact_number,
+        u.business_address,
+        p.id AS product_id,
+        p.product_name,
+        p.size,
+        p.length_cm,
+        p.stock_quantity,
+        p.product_image_path,
+        p.created_at AS product_created_at
+      FROM users u
+      LEFT JOIN products p ON p.trader_id = u.id
+      WHERE u.role = 'trader' AND u.id = ?
+      ORDER BY u.created_at DESC, p.created_at DESC
+    `,
+    [traderId]
   );
 
   return rows;
