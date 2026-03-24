@@ -36,13 +36,15 @@ const emit = defineEmits(['logout', 'close']);
     <button type="button" class="close-btn" aria-label="Close sidebar" @click="emit('close')">X</button>
 
     <div class="brand">
-      <img
-        v-if="profileImagePath"
-        class="profile-image"
-        :src="toMediaUrl(profileImagePath)"
-        alt="Trader profile"
-      />
-      <div v-else class="profile-image placeholder">{{ (userName || 'T').slice(0, 1).toUpperCase() }}</div>
+      <router-link to="/trader/profile" class="profile-link" @click="emit('close')">
+        <img
+          v-if="profileImagePath"
+          class="profile-image"
+          :src="toMediaUrl(profileImagePath)"
+          alt="Trader profile"
+        />
+        <div v-else class="profile-image placeholder">{{ (userName || 'T').slice(0, 1).toUpperCase() }}</div>
+      </router-link>
       <p class="kicker">Cocolytics</p>
       <h1>Trader Panel</h1>
       <p class="display-name">{{ userName }}</p>
@@ -121,6 +123,18 @@ const emit = defineEmits(['logout', 'close']);
   border-radius: 999px;
   object-fit: cover;
   border: 2px solid rgba(131, 236, 200, 0.45);
+}
+
+.profile-link {
+  width: 64px;
+  display: inline-flex;
+  border-radius: 999px;
+  text-decoration: none;
+}
+
+.profile-link:focus-visible {
+  outline: 2px solid rgba(151, 243, 211, 0.82);
+  outline-offset: 3px;
 }
 
 .profile-image.placeholder {

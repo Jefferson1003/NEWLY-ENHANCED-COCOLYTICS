@@ -99,6 +99,13 @@ function withTrailingDots(value, maxLength = 44) {
   return `${text.slice(0, maxLength)}.............`;
 }
 
+function withLongDots(value, maxLength = 18) {
+  const text = String(value || '').trim();
+  if (!text) return 'No name';
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength)}................`;
+}
+
 function traderInitial(name) {
   const normalized = String(name || 'T').trim();
   return (normalized[0] || 'T').toUpperCase();
@@ -613,8 +620,8 @@ onMounted(async () => {
           @click="openEditProductModal(product)"
         >
           <img v-if="product.productImagePath" :src="toImageUrl(product.productImagePath)" alt="Product" />
-          <div>
-            <h3>{{ product.productName }}</h3>
+          <div class="inventory-product-content">
+            <h3 :title="product.productName">{{ withLongDots(product.productName, 16) }}</h3>
             <p>Size: {{ product.size }}</p>
             <p>Length: {{ product.lengthCm ?? 'N/A' }} cm</p>
             <p>Stock: {{ product.stockQuantity }}</p>
@@ -1074,7 +1081,7 @@ button:disabled {
 }
 
 .inventory-products {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.55rem;
 }
 
@@ -1093,6 +1100,10 @@ button:disabled {
   align-content: start;
 }
 
+.inventory-product-content {
+  min-width: 0;
+}
+
 .product-card.clickable {
   cursor: pointer;
 }
@@ -1108,6 +1119,9 @@ button:disabled {
 .product-card h3 {
   margin: 0;
   font-size: 1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .product-card h4 {
@@ -1373,6 +1387,7 @@ button:disabled {
 }
 
 .qty-input[type='number'] {
+  appearance: textfield;
   -moz-appearance: textfield;
 }
 
@@ -1610,6 +1625,10 @@ button:disabled {
   }
 
   .product-card {
+    grid-template-columns: 1fr;
+  }
+
+  .inventory-products {
     grid-template-columns: 1fr;
   }
 
