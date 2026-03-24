@@ -3,10 +3,10 @@ import { createToken } from '../middlewares/authMiddleware.js';
 import { createClientUser, findUserById, findUserForLogin, sanitizeUser } from '../models/userModel.js';
 
 export async function register(req, res) {
-  const { fullName, email, password } = req.body;
+  const { fullName, email, password, staffReason } = req.body;
 
-  if (!fullName || !email || !password) {
-    return res.status(400).json({ error: 'fullName, email, and password are required.' });
+  if (!fullName || !email || !password || !String(staffReason || '').trim()) {
+    return res.status(400).json({ error: 'fullName, email, password, and staffReason are required.' });
   }
 
   if (String(password).length < 6) {
@@ -15,7 +15,7 @@ export async function register(req, res) {
 
   try {
     const passwordHash = await bcrypt.hash(password, 10);
-    await createClientUser(fullName, email, passwordHash);
+    await createClientUser(fullName, email, passwordHash, staffReason);
 
     return res.status(201).json({
       message: 'Register application sent successfully, please wait for the admin approval.',

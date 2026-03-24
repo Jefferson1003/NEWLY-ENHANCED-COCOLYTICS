@@ -4,6 +4,10 @@ defineProps({
     type: String,
     default: '',
   },
+  pendingClientCount: {
+    type: Number,
+    default: 0,
+  },
   isOpen: {
     type: Boolean,
     default: true,
@@ -25,7 +29,10 @@ const emit = defineEmits(['logout', 'close']);
 
     <nav class="nav-links">
       <router-link to="/admin/dashboard" @click="emit('close')">Dashboard</router-link>
-      <router-link to="/admin/manage-users" @click="emit('close')">Manage Users</router-link>
+      <router-link to="/admin/manage-users" class="pending-link" @click="emit('close')">
+        <span>Manage Users</span>
+        <span v-if="pendingClientCount > 0" class="pending-badge">{{ pendingClientCount }} pending</span>
+      </router-link>
       <router-link to="/admin/staff-applications" @click="emit('close')">Staff Applications</router-link>
       <router-link to="/admin/paper-approvals" @click="emit('close')">Paper Approvals</router-link>
     </nav>
@@ -107,6 +114,23 @@ h1 {
   padding: 0.6rem 0.7rem;
   font-weight: 700;
   font-size: 0.86rem;
+}
+
+.pending-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.pending-badge {
+  border: 1px solid rgba(255, 192, 134, 0.55);
+  border-radius: 999px;
+  background: rgba(173, 82, 18, 0.85);
+  color: #fff2e1;
+  font-size: 0.68rem;
+  padding: 0.1rem 0.42rem;
+  font-weight: 800;
 }
 
 .nav-links a.router-link-active {

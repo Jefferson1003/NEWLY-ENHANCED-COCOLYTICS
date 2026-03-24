@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import ConfirmationModal from '../../components/ConfirmationModal.vue';
 import { acceptClient, fetchClients } from '../../services/api';
 
@@ -8,6 +8,33 @@ const loading = ref(true);
 const feedback = ref('');
 const showAcceptConfirm = ref(false);
 const targetUser = ref(null);
+const searchText = ref('');
+const statusFilter = ref('all');
+
+const ADMIN_USERS_UPDATED_EVENT = 'cocolytics-admin-users-updated';
+
+const filteredUsers = computed(() => {
+  const statusValue = String(statusFilter.value || 'all').trim().toLowerCase();
+  const keyword = String(searchText.value || '').trim().toLowerCase();
+
+  return users.value.filter((user) => {
+    const normalizedStatus = String(user.status || '').toLowerCase();
+    const statusMatch = statusValue === 'all' || normalizedStatus === statusValue;
+
+    const name = String(user.fullName || '').toLowerCase();
+    const email = String(user.email || '').toLowerCase();
+    const role = String(user.role || '').toLowerCase();
+    const reason = String(user.staffReason || '').toLowerCase();
+    const keywordMatch = !keyword
+      || name.includes(keyword)
+      || email.includes(keyword)
+      || role.includes(keyword)
+      || normalizedStatus.includes(keyword)
+      || reason.includes(keyword);
+
+    return statusMatch && keywordMatch;
+  });
+});
 
 async function loadUsers() {
   loading.value = true;
@@ -26,6 +53,7 @@ async function onAcceptClient(id) {
   try {
     await acceptClient(id);
     await loadUsers();
+    window.dispatchEvent(new CustomEvent(ADMIN_USERS_UPDATED_EVENT));
   } catch (error) {
     feedback.value = error.message;
   }
@@ -60,6 +88,23 @@ onMounted(loadUsers);
 
     <p v-if="feedback" class="feedback">{{ feedback }}</p>
 
+    <div class="filters">
+      <input
+        v-model="searchText"
+        type="text"
+        class="search-input"
+        placeholder="Search name, email, role, status, reason"
+      />
+
+      <select v-model="statusFilter" class="status-filter">
+        <option value="all">Status: All</option>
+        <option value="pending_client">Pending Client</option>
+        <option value="accepted_client">Accepted Client</option>
+        <option value="pending_staff">Pending Staff</option>
+        <option value="trader">Trader</option>
+      </select>
+    </div>
+
     <div class="table-wrap">
       <table>
         <thead>
@@ -68,18 +113,20 @@ onMounted(loadUsers);
             <th>Email</th>
             <th>Role</th>
             <th>Status</th>
+            <th>Staff Reason</th>
             <th>Action</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="loading">
-            <td colspan="5">Loading users...</td>
+            <td colspan="6">Loading users...</td>
           </tr>
-          <tr v-for="user in users" :key="user.id">
+          <tr v-for="user in filteredUsers" :key="user.id">
             <td>{{ user.fullName }}</td>
             <td>{{ user.email }}</td>
             <td>{{ user.role }}</td>
             <td>{{ user.status }}</td>
+            <td>{{ user.staffReason || '-' }}</td>
             <td>
               <button
                 v-if="user.status === 'pending_client'"
@@ -90,8 +137,8 @@ onMounted(loadUsers);
               </button>
             </td>
           </tr>
-          <tr v-if="!loading && users.length === 0">
-            <td colspan="5">No users found.</td>
+          <tr v-if="!loading && filteredUsers.length === 0">
+            <td colspan="6">No users found.</td>
           </tr>
         </tbody>
       </table>
@@ -132,6 +179,23 @@ h2 {
   color: #ffbac7;
 }
 
+.filters {
+  margin-top: 0.8rem;
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 0.55rem;
+}
+
+.search-input,
+.status-filter {
+  border: 1px solid rgba(121, 220, 183, 0.35);
+  border-radius: 10px;
+  background: rgba(7, 25, 33, 0.88);
+  color: #eefff8;
+  padding: 0.58rem 0.68rem;
+  font: inherit;
+}
+
 .table-wrap {
   margin-top: 1rem;
   border: 1px solid rgba(139, 211, 255, 0.24);
@@ -160,5 +224,11 @@ td {
   color: #edfff6;
   padding: 0.4rem 0.7rem;
   font-weight: 700;
+}
+
+@media (max-width: 700px) {
+  .filters {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

@@ -10,6 +10,7 @@ const fullName = ref('');
 const email = ref('');
 const password = ref('');
 const confirmPassword = ref('');
+const staffReason = ref('');
 const showPassword = ref(false);
 const loading = ref(false);
 const feedback = ref('');
@@ -26,6 +27,7 @@ function setMode(nextMode) {
 
   if (nextMode === 'login') {
     confirmPassword.value = '';
+    staffReason.value = '';
   }
 }
 
@@ -53,6 +55,13 @@ async function submitForm() {
 
   try {
     if (mode.value === 'register') {
+      if (!String(staffReason.value || '').trim()) {
+        isError.value = true;
+        feedback.value = 'Please provide your reason for becoming a staff.';
+        loading.value = false;
+        return;
+      }
+
       if (!passwordIsStrong(password.value)) {
         isError.value = true;
         feedback.value = 'Password must be at least 8 characters and include uppercase, lowercase, and a number.';
@@ -71,12 +80,14 @@ async function submitForm() {
         fullName: fullName.value,
         email: email.value,
         password: password.value,
+        staffReason: staffReason.value,
       });
 
       feedback.value = 'Register application sent successfully, please wait for the admin approval.';
       setMode('login');
       password.value = '';
       confirmPassword.value = '';
+      staffReason.value = '';
       loading.value = false;
       return;
     }
@@ -135,6 +146,16 @@ async function submitForm() {
             placeholder="Re-enter password"
             required
           />
+        </label>
+
+        <label v-if="mode === 'register'">
+          <span>Why do you want to become a staff?</span>
+          <textarea
+            v-model="staffReason"
+            rows="3"
+            placeholder="Tell us why you want to become a staff member"
+            required
+          ></textarea>
         </label>
 
         <label class="show-password">
@@ -260,6 +281,17 @@ input {
   color: #eefff8;
   padding: 0.62rem 0.7rem;
   font-size: 0.85rem;
+}
+
+textarea {
+  border: 1px solid rgba(109, 218, 181, 0.35);
+  border-radius: 10px;
+  background: rgba(7, 25, 33, 0.88);
+  color: #eefff8;
+  padding: 0.62rem 0.7rem;
+  font-size: 0.85rem;
+  font: inherit;
+  resize: vertical;
 }
 
 .submit {

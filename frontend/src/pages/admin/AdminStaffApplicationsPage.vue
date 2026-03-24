@@ -62,15 +62,35 @@ onMounted(loadUsers);
 
     <p v-if="feedback" class="feedback">{{ feedback }}</p>
 
-    <div class="cards">
-      <article v-if="loading" class="card">Loading staff applications...</article>
-      <article v-for="user in pendingStaff" :key="user.id" class="card">
-        <p class="name">{{ user.fullName }}</p>
-        <p>{{ user.email }}</p>
-        <p>Status: {{ user.status }}</p>
-        <button @click="requestAcceptStaff(user)">Accept as Staff</button>
-      </article>
-      <article v-if="!loading && pendingStaff.length === 0" class="card">No pending staff applications.</article>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Status</th>
+            <th>Why Become Staff</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-if="loading">
+            <td colspan="5">Loading staff applications...</td>
+          </tr>
+          <tr v-for="user in pendingStaff" :key="user.id">
+            <td>{{ user.fullName }}</td>
+            <td>{{ user.email }}</td>
+            <td>{{ user.status }}</td>
+            <td>{{ user.staffReason || '-' }}</td>
+            <td>
+              <button @click="requestAcceptStaff(user)">Accept as Staff</button>
+            </td>
+          </tr>
+          <tr v-if="!loading && pendingStaff.length === 0">
+            <td colspan="5">No pending staff applications.</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
     <ConfirmationModal
@@ -108,23 +128,26 @@ h2 {
   color: #ffbac7;
 }
 
-.cards {
+.table-wrap {
   margin-top: 1rem;
-  display: grid;
-  gap: 0.8rem;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-}
-
-.card {
-  border: 1px solid rgba(138, 210, 255, 0.2);
+  border: 1px solid rgba(139, 211, 255, 0.24);
   border-radius: 12px;
+  overflow: auto;
   background: rgba(9, 31, 48, 0.78);
-  padding: 0.85rem;
 }
 
-.name {
-  margin: 0;
-  font-weight: 800;
+table {
+  width: 100%;
+  min-width: 820px;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.75rem;
+  border-bottom: 1px solid rgba(138, 209, 255, 0.16);
+  text-align: left;
+  vertical-align: top;
 }
 
 button {

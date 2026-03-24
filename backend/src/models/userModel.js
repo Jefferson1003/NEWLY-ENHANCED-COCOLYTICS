@@ -4,13 +4,18 @@ export function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
 }
 
-export async function createClientUser(fullName, email, passwordHash) {
+export async function createClientUser(fullName, email, passwordHash, staffReason = '') {
   const [result] = await pool.execute(
     `
-      INSERT INTO users (full_name, email, password_hash, role, status)
-      VALUES (?, ?, ?, 'client', 'pending_client')
+      INSERT INTO users (full_name, email, password_hash, role, status, staff_reason)
+      VALUES (?, ?, ?, 'client', 'pending_client', ?)
     `,
-    [String(fullName).trim(), normalizeEmail(email), passwordHash]
+    [
+      String(fullName).trim(),
+      normalizeEmail(email),
+      passwordHash,
+      String(staffReason || '').trim() || null,
+    ]
   );
 
   return result.insertId;
@@ -47,6 +52,7 @@ export async function findUserById(id) {
         profile_description,
         contact_number,
         business_address,
+        staff_reason,
         profile_image_path,
         created_at
       FROM users
@@ -62,7 +68,7 @@ export async function findUserById(id) {
 export async function findAllNonAdminUsers() {
   const [rows] = await pool.execute(
     `
-      SELECT id, full_name, email, role, status, profile_name, contact_number, created_at
+      SELECT id, full_name, email, role, status, profile_name, contact_number, staff_reason, created_at
       FROM users
       WHERE role != 'admin'
       ORDER BY created_at DESC
@@ -125,10 +131,12 @@ export async function acceptClientAsTrader(id) {
 }
 
 export async function updateTraderProfileById(id, payload) {
+  const normalizedName = String(payload.name || '').trim();
   const [result] = await pool.execute(
     `
       UPDATE users
       SET
+        full_name = ?,
         profile_name = ?,
         profile_description = ?,
         contact_number = ?,
@@ -136,7 +144,8 @@ export async function updateTraderProfileById(id, payload) {
       WHERE id = ? AND role = 'trader'
     `,
     [
-      String(payload.name || '').trim(),
+      normalizedName,
+      normalizedName,
       String(payload.description || '').trim(),
       String(payload.contactNumber || '').trim(),
       String(payload.businessAddress || '').trim(),
@@ -167,10 +176,11 @@ export function sanitizeUser(user) {
     email: user.email,
     role: user.role,
     status: user.status,
-    profileName: user.profile_name || '',
+    profileName: user.full_name || user.profile_name || '',
     profileDescription: user.profile_description || '',
     contactNumber: user.contact_number || '',
     businessAddress: user.business_address || '',
+    staffReason: user.staff_reason || '',
     profileImagePath: user.profile_image_path || '',
     createdAt: user.created_at,
   };

@@ -1,14 +1,28 @@
 <script setup>
-import { ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import AdminSidebar from '../../components/AdminSidebar.vue';
 import ConfirmationModal from '../../components/ConfirmationModal.vue';
+import { fetchClients } from '../../services/api';
 import { clearSession, getUser } from '../../services/session';
 
 const router = useRouter();
 const user = getUser();
 const sidebarOpen = ref(false);
 const showLogoutConfirm = ref(false);
+const pendingClientCount = ref(0);
+
+const ADMIN_USERS_UPDATED_EVENT = 'cocolytics-admin-users-updated';
+
+async function loadPendingClientCount() {
+  try {
+    const data = await fetchClients();
+    const clients = data.clients || [];
+    pendingClientCount.value = clients.filter((item) => item.status === 'pending_client').length;
+  } catch {
+    pendingClientCount.value = 0;
+  }
+}
 
 function logout() {
   clearSession();
@@ -35,12 +49,22 @@ function toggleSidebar() {
 function closeSidebar() {
   sidebarOpen.value = false;
 }
+
+onMounted(() => {
+  loadPendingClientCount();
+  window.addEventListener(ADMIN_USERS_UPDATED_EVENT, loadPendingClientCount);
+});
+
+onUnmounted(() => {
+  window.removeEventListener(ADMIN_USERS_UPDATED_EVENT, loadPendingClientCount);
+});
 </script>
 
 <template>
   <section class="admin-layout">
     <AdminSidebar
       :user-email="user?.email || ''"
+      :pending-client-count="pendingClientCount"
       :is-open="sidebarOpen"
       @logout="requestLogout"
       @close="closeSidebar"
