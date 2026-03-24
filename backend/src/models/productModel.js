@@ -49,6 +49,55 @@ export async function findProductsByTraderId(traderId) {
   return rows;
 }
 
+export async function findProductByIdAndTraderId(productId, traderId) {
+  const [rows] = await pool.execute(
+    `
+      SELECT
+        id,
+        trader_id,
+        product_name,
+        size,
+        length_cm,
+        stock_quantity,
+        product_image_path,
+        created_at,
+        updated_at
+      FROM products
+      WHERE id = ? AND trader_id = ?
+      LIMIT 1
+    `,
+    [productId, traderId]
+  );
+
+  return rows[0] || null;
+}
+
+export async function updateProductByIdAndTraderId(productId, traderId, payload) {
+  const [result] = await pool.execute(
+    `
+      UPDATE products
+      SET
+        product_name = ?,
+        size = ?,
+        length_cm = ?,
+        stock_quantity = ?,
+        product_image_path = COALESCE(?, product_image_path)
+      WHERE id = ? AND trader_id = ?
+    `,
+    [
+      String(payload.productName || '').trim(),
+      payload.size,
+      payload.lengthCm,
+      payload.stockQuantity,
+      payload.productImagePath || null,
+      productId,
+      traderId,
+    ]
+  );
+
+  return result.affectedRows;
+}
+
 export function sanitizeProduct(product) {
   return {
     id: product.id,

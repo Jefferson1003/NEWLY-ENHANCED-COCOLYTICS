@@ -95,7 +95,7 @@ onMounted(loadTrader);
       <section class="products">
         <h3>Products</h3>
         <p v-if="!(trader.products || []).length" class="muted">No products listed yet.</p>
-        <div v-else class="product-grid">
+        <div v-else :class="['product-grid', { single: (trader.products || []).length === 1 }]">
           <article v-for="product in trader.products" :key="product.id" class="product-card">
             <img
               v-if="product.productImagePath"
@@ -213,7 +213,12 @@ h2 {
 .product-grid {
   margin-top: 0.65rem;
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.6rem;
+}
+
+.product-grid.single {
+  grid-template-columns: 1fr;
 }
 
 .product-card {
@@ -256,10 +261,6 @@ h4 {
 @media (min-width: 760px) {
   .page {
     padding: 1.2rem;
-  }
-
-  .product-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>

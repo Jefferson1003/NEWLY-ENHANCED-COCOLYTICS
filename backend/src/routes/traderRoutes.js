@@ -11,6 +11,7 @@ import {
   listMyProducts,
   placeOrder,
   removeCartItem,
+  updateProduct,
   updateCartItemQuantity,
   updateTraderProfile,
   updateTraderProfileImage,
@@ -53,5 +54,14 @@ traderRouter.post('/products', (req, res, next) => {
     return next();
   });
 }, addProduct);
+traderRouter.patch('/products/:id', (req, res, next) => {
+  uploadProductImage(req, res, (error) => {
+    if (error) {
+      return res.status(400).json({ error: error.message || 'Invalid upload.' });
+    }
+
+    return next();
+  });
+}, updateProduct);
 
 export default traderRouter;

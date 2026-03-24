@@ -14,7 +14,13 @@ import {
   removeCartItemById,
   updateCartItemQuantityById,
 } from '../models/marketplaceModel.js';
-import { createProduct, findProductsByTraderId, sanitizeProduct } from '../models/productModel.js';
+import {
+  createProduct,
+  findProductByIdAndTraderId,
+  findProductsByTraderId,
+  sanitizeProduct,
+  updateProductByIdAndTraderId,
+} from '../models/productModel.js';
 import {
   findUserById,
   sanitizeUser,
@@ -271,6 +277,65 @@ export async function addProduct(req, res) {
     });
   } catch {
     return res.status(500).json({ error: 'Could not add product.' });
+  }
+}
+
+export async function updateProduct(req, res) {
+  const productId = Number(req.params.id);
+  const { productName, size, lengthCm, stockQuantity } = req.body;
+  const normalizedSize = String(size || '').trim().toLowerCase();
+  const fixedSize = normalizedSize === 'meduim' ? 'medium' : normalizedSize;
+
+  if (!Number.isInteger(productId) || productId <= 0) {
+    return res.status(400).json({ error: 'Invalid product ID.' });
+  }
+
+  if (!productName) {
+    return res.status(400).json({ error: 'productName is required.' });
+  }
+
+  if (!['small', 'medium', 'large'].includes(fixedSize)) {
+    return res.status(400).json({ error: 'size must be small, medium, or large.' });
+  }
+
+  const parsedLength = lengthCm === '' || lengthCm === undefined ? null : Number(lengthCm);
+  const parsedStock = Number(stockQuantity);
+
+  if (parsedLength !== null && (!Number.isFinite(parsedLength) || parsedLength < 0)) {
+    return res.status(400).json({ error: 'lengthCm must be 0 or higher.' });
+  }
+
+  if (!Number.isInteger(parsedStock) || parsedStock < 0) {
+    return res.status(400).json({ error: 'stockQuantity must be a non-negative whole number.' });
+  }
+
+  try {
+    const existingProduct = await findProductByIdAndTraderId(productId, req.auth.id);
+    if (!existingProduct) {
+      return res.status(404).json({ error: 'Product not found.' });
+    }
+
+    const productImagePath = req.file ? `/uploads/products_img/${req.file.filename}` : null;
+
+    const affectedRows = await updateProductByIdAndTraderId(productId, req.auth.id, {
+      productName,
+      size: fixedSize,
+      lengthCm: parsedLength,
+      stockQuantity: parsedStock,
+      productImagePath,
+    });
+
+    if (!affectedRows) {
+      return res.status(404).json({ error: 'Product not found.' });
+    }
+
+    const updatedProduct = await findProductByIdAndTraderId(productId, req.auth.id);
+    return res.status(200).json({
+      message: 'Product updated successfully.',
+      product: sanitizeProduct(updatedProduct),
+    });
+  } catch {
+    return res.status(500).json({ error: 'Could not update product.' });
   }
 }
 

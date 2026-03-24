@@ -112,6 +112,23 @@ export function createTraderProduct(payload) {
   });
 }
 
+export function updateTraderProduct(productId, payload) {
+  const formData = new FormData();
+  formData.append('productName', payload.productName || '');
+  formData.append('size', payload.size || '');
+  formData.append('lengthCm', payload.lengthCm ?? '');
+  formData.append('stockQuantity', String(payload.stockQuantity ?? ''));
+
+  if (payload.productImage) {
+    formData.append('productImage', payload.productImage);
+  }
+
+  return request(`/api/trader/products/${productId}`, {
+    method: 'PATCH',
+    body: formData,
+  });
+}
+
 export function fetchMarketplaceTraders() {
   return request('/api/trader/marketplace/traders');
 }

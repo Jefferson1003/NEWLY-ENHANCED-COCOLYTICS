@@ -9,6 +9,7 @@ import {
   fetchTraderProducts,
   placeMyOrder,
   removeCartItem,
+  updateTraderProduct,
   updateCartItemQuantity as updateCartItemQuantityApi,
 } from '../../services/api';
 import { toMediaUrl } from '../../services/media';
@@ -41,6 +42,16 @@ const selectedCartItemIds = ref([]);
 const currentAddress = ref(null);
 const quantityUpdatingIds = ref([]);
 const showCheckoutConfirmModal = ref(false);
+const showProductEditModal = ref(false);
+const editingProduct = ref(null);
+const productSaving = ref(false);
+const editProductForm = reactive({
+  productName: '',
+  size: 'small',
+  lengthCm: '',
+  stockQuantity: 0,
+  productImage: null,
+});
 
 const orderCount = computed(() => orders.value.length);
 
@@ -289,6 +300,60 @@ function onSelectImage(event) {
   form.productImage = file || null;
 }
 
+function openEditProductModal(product) {
+  editingProduct.value = product;
+  editProductForm.productName = String(product.productName || '').trim();
+  editProductForm.size = String(product.size || 'small').toLowerCase();
+  editProductForm.lengthCm = product.lengthCm ?? '';
+  editProductForm.stockQuantity = Number(product.stockQuantity || 0);
+  editProductForm.productImage = null;
+  showProductEditModal.value = true;
+}
+
+function closeEditProductModal() {
+  showProductEditModal.value = false;
+  editingProduct.value = null;
+  editProductForm.productName = '';
+  editProductForm.size = 'small';
+  editProductForm.lengthCm = '';
+  editProductForm.stockQuantity = 0;
+  editProductForm.productImage = null;
+}
+
+function onSelectEditImage(event) {
+  const [file] = event.target.files || [];
+  editProductForm.productImage = file || null;
+}
+
+function emitInventoryUpdated() {
+  window.dispatchEvent(new CustomEvent('cocolytics-inventory-updated'));
+}
+
+async function saveEditedProduct() {
+  const product = editingProduct.value;
+  if (!product) return;
+
+  productSaving.value = true;
+  try {
+    await updateTraderProduct(product.id, {
+      productName: editProductForm.productName,
+      size: editProductForm.size,
+      lengthCm: editProductForm.lengthCm,
+      stockQuantity: editProductForm.stockQuantity,
+      productImage: editProductForm.productImage,
+    });
+
+    feedback.value = 'Product updated successfully.';
+    await Promise.all([loadProducts(), loadMarketplace()]);
+    emitInventoryUpdated();
+    closeEditProductModal();
+  } catch (error) {
+    feedback.value = error.message;
+  } finally {
+    productSaving.value = false;
+  }
+}
+
 async function loadMarketplace() {
   loadingMarketplace.value = true;
   try {
@@ -534,13 +599,19 @@ onMounted(async () => {
       <p v-else-if="!products.length" class="muted">No products yet.</p>
 
       <div v-else :class="['products', 'inventory-products', { 'single-item': products.length === 1 }]">
-        <article v-for="product in products" :key="product.id" class="product-card">
+        <article
+          v-for="product in products"
+          :key="product.id"
+          class="product-card clickable"
+          @click="openEditProductModal(product)"
+        >
           <img v-if="product.productImagePath" :src="toImageUrl(product.productImagePath)" alt="Product" />
           <div>
             <h3>{{ product.productName }}</h3>
             <p>Size: {{ product.size }}</p>
             <p>Length: {{ product.lengthCm ?? 'N/A' }} cm</p>
             <p>Stock: {{ product.stockQuantity }}</p>
+            <button type="button" class="mini-btn" @click.stop="openEditProductModal(product)">Edit Product</button>
           </div>
         </article>
       </div>
@@ -831,6 +902,55 @@ onMounted(async () => {
         </footer>
       </section>
     </div>
+
+    <div
+      v-if="showProductEditModal && editingProduct"
+      class="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Edit product"
+      @click.self="closeEditProductModal"
+    >
+      <section class="modal-card product-edit-modal">
+        <header class="modal-head">
+          <h3>Edit Product</h3>
+          <button type="button" class="mini-btn" @click="closeEditProductModal">Close</button>
+        </header>
+
+        <form class="form product-edit-form" @submit.prevent="saveEditedProduct">
+          <label>
+            Product Name
+            <input v-model="editProductForm.productName" type="text" required />
+          </label>
+
+          <label>
+            Size
+            <select v-model="editProductForm.size" required>
+              <option value="small">Small</option>
+              <option value="medium">Medium</option>
+              <option value="large">Large</option>
+            </select>
+          </label>
+
+          <label>
+            Length (cm)
+            <input v-model="editProductForm.lengthCm" type="number" step="0.01" min="0" />
+          </label>
+
+          <label>
+            Stock Quantity
+            <input v-model.number="editProductForm.stockQuantity" type="number" min="0" step="1" required />
+          </label>
+
+          <label>
+            Update Product Image (optional)
+            <input type="file" accept="image/*" @change="onSelectEditImage" />
+          </label>
+
+          <button type="submit" :disabled="productSaving">{{ productSaving ? 'Saving...' : 'Save Changes' }}</button>
+        </form>
+      </section>
+    </div>
   </section>
 </template>
 
@@ -966,6 +1086,10 @@ button:disabled {
   align-content: start;
 }
 
+.product-card.clickable {
+  cursor: pointer;
+}
+
 .product-card img {
   width: 90px;
   height: 90px;
@@ -992,7 +1116,7 @@ button:disabled {
 .traders-grid {
   margin-top: 0.85rem;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.5rem;
 }
 
@@ -1370,6 +1494,14 @@ button:disabled {
   padding: 0.9rem;
   max-height: 88vh;
   overflow: auto;
+}
+
+.product-edit-modal {
+  width: min(620px, 100%);
+}
+
+.product-edit-form {
+  margin-top: 0.8rem;
 }
 
 .modal-head {

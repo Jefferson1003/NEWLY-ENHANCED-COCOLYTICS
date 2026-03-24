@@ -3,7 +3,7 @@ import { ref, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import ConfirmationModal from '../../components/ConfirmationModal.vue';
 import TraderSidebar from '../../components/TraderSidebar.vue';
-import { fetchMe } from '../../services/api';
+import { fetchMe, fetchTraderProducts } from '../../services/api';
 import { clearSession, getUser, SESSION_UPDATED_EVENT } from '../../services/session';
 
 const router = useRouter();
@@ -14,6 +14,9 @@ const showLogoutConfirm = ref(false);
 const deferredPrompt = ref(null);
 const installReady = ref(false);
 const isInstalled = ref(false);
+const lowStockCount = ref(0);
+
+const INVENTORY_UPDATED_EVENT = 'cocolytics-inventory-updated';
 
 function handleBeforeInstallPrompt(event) {
   event.preventDefault();
@@ -44,6 +47,16 @@ async function loadProfile() {
     }
   } catch (error) {
     feedback.value = error.message;
+  }
+}
+
+async function loadLowStockCount() {
+  try {
+    const data = await fetchTraderProducts();
+    const products = data.products || [];
+    lowStockCount.value = products.filter((product) => Number(product.stockQuantity || 0) <= 10).length;
+  } catch {
+    lowStockCount.value = 0;
   }
 }
 
@@ -103,6 +116,7 @@ async function installApp() {
 onMounted(() => {
   syncProfileFromSession();
   loadProfile();
+  loadLowStockCount();
 
   const standaloneMode = window.matchMedia?.('(display-mode: standalone)')?.matches;
   isInstalled.value = Boolean(standaloneMode || window.navigator.standalone);
@@ -110,12 +124,14 @@ onMounted(() => {
   window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   window.addEventListener('appinstalled', handleAppInstalled);
   window.addEventListener(SESSION_UPDATED_EVENT, syncProfileFromSession);
+  window.addEventListener(INVENTORY_UPDATED_EVENT, loadLowStockCount);
 });
 
 onUnmounted(() => {
   window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   window.removeEventListener('appinstalled', handleAppInstalled);
   window.removeEventListener(SESSION_UPDATED_EVENT, syncProfileFromSession);
+  window.removeEventListener(INVENTORY_UPDATED_EVENT, loadLowStockCount);
 });
 </script>
 
@@ -125,6 +141,7 @@ onUnmounted(() => {
       :user-name="profile?.profileName || profile?.fullName || ''"
       :user-email="profile?.email || ''"
       :profile-image-path="profile?.profileImagePath || ''"
+      :low-stock-count="lowStockCount"
       :is-open="sidebarOpen"
       @logout="requestLogout"
       @close="closeSidebar"
