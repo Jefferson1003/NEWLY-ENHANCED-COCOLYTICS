@@ -13,6 +13,7 @@ import timberStack3 from './assets/hero/download (1).jpg'
 const router = useRouter()
 const deferredPrompt = ref(null)
 const installReady = ref(false)
+const isInstalled = ref(false)
 const installResult = ref('')
 const traders = ref([])
 const tradersLoading = ref(false)
@@ -51,9 +52,11 @@ const heroImages = [
   }
 ]
 
-const installLabel = computed(() =>
-  installReady.value ? 'Install Mobile App' : 'Install Option Waiting'
-)
+const installLabel = computed(() => {
+  if (isInstalled.value) return 'App Installed'
+  if (installReady.value) return 'Install Mobile App'
+  return 'How To Install'
+})
 
 function toImageUrl(path) {
   if (!path) return ''
@@ -98,6 +101,9 @@ function visitTrader(traderId) {
 onMounted(() => {
   loadTraders()
 
+  const standaloneMode = window.matchMedia?.('(display-mode: standalone)')?.matches
+  isInstalled.value = Boolean(standaloneMode || window.navigator.standalone)
+
   window.addEventListener('beforeinstallprompt', (event) => {
     event.preventDefault()
     deferredPrompt.value = event
@@ -107,13 +113,25 @@ onMounted(() => {
   window.addEventListener('appinstalled', () => {
     installResult.value = 'Cocolytics is installed. You can launch it from your home screen.'
     installReady.value = false
+    isInstalled.value = true
     deferredPrompt.value = null
   })
 })
 
 async function installApp() {
+  if (isInstalled.value) {
+    installResult.value = 'Cocolytics is already installed on this device.'
+    return
+  }
+
   if (!deferredPrompt.value) {
-    installResult.value = 'Install banner is not ready yet. Keep browsing for a moment.'
+    const userAgent = window.navigator.userAgent || ''
+    const isiOS = /iPad|iPhone|iPod/.test(userAgent)
+
+    installResult.value = isiOS
+      ? 'On iPhone: tap Share, then choose Add to Home Screen.'
+      : 'Install prompt is not available yet. In Chrome/Edge, open the browser menu then tap Install app.'
+
     return
   }
 
@@ -145,7 +163,7 @@ async function installApp() {
         </p>
 
         <div class="hero-actions">
-          <button type="button" :disabled="!installReady" @click="installApp">{{ installLabel }}</button>
+          <button type="button" :disabled="isInstalled" @click="installApp">{{ installLabel }}</button>
           <a href="#features">Explore Features</a>
         </div>
 
@@ -272,6 +290,7 @@ async function installApp() {
 
 .hero-gallery {
   display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.6rem;
 }
 
@@ -288,15 +307,15 @@ async function installApp() {
 
 .gallery-card img {
   width: 100%;
-  height: 120px;
+  height: clamp(80px, 20vw, 150px);
   object-fit: cover;
   display: block;
 }
 
 .gallery-card p {
   margin: 0;
-  padding: 0.6rem 0.72rem;
-  font-size: 0.8rem;
+  padding: 0.45rem 0.5rem;
+  font-size: 0.72rem;
   color: #d0ffe9;
   font-weight: 600;
 }
@@ -563,10 +582,6 @@ ol {
   .home-main {
     width: min(100%, 960px);
     padding: 7.2rem 1.2rem 1.2rem;
-  }
-
-  .hero-gallery {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .gallery-card img {

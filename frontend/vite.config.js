@@ -21,11 +21,17 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       devOptions: {
-        enabled: true
+        enabled: false
       },
-      includeAssets: ['vite.svg'],
+      includeAssets: [
+        'logo/cocolyticslogo.png',
+        'icons/pwa-192x192.png',
+        'icons/pwa-512x512.png',
+        'icons/apple-touch-icon.png',
+      ],
       manifest: {
-        name: 'Cocolytics Enhanced',
+        id: '/',
+        name: 'Cocolytics',
         short_name: 'Cocolytics',
         description: 'Installable Vue frontend for Cocolytics.',
         theme_color: '#0f766e',
@@ -36,11 +42,23 @@ export default defineConfig({
         scope: '/',
         icons: [
           {
-            src: 'vite.svg',
-            sizes: 'any',
-            type: 'image/svg+xml',
+            src: '/icons/pwa-192x192.png',
+            sizes: '192x192',
+            type: 'image/png',
             purpose: 'any'
-          }
+          },
+          {
+            src: '/icons/pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any'
+          },
+          {
+            src: '/icons/pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable'
+          },
         ]
       }
     })

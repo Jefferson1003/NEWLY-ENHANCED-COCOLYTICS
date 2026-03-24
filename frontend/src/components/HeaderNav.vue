@@ -1,8 +1,11 @@
 <template>
   <header class="header-nav">
     <div class="brand-block">
-      <p class="brand-kicker">Cocolytics</p>
-      <strong class="brand-name">Mobile Insights Hub</strong>
+      <img class="brand-logo" :src="cocolyticsLogo" alt="Cocolytics logo" />
+      <div class="brand-copy">
+        <p class="brand-kicker">Cocolytics</p>
+        <strong class="brand-name">Mobile Insights Hub</strong>
+      </div>
     </div>
 
     <button type="button" class="login-btn" @click="router.push('/auth')">Login</button>
@@ -11,6 +14,7 @@
 
 <script setup>
 import { useRouter } from 'vue-router'
+import cocolyticsLogo from '../assets/logo/cocolyticslogo.png'
 
 const router = useRouter()
 </script>
@@ -33,8 +37,23 @@ const router = useRouter()
 }
 
 .brand-block {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.brand-copy {
   display: grid;
   gap: 0.1rem;
+}
+
+.brand-logo {
+  width: 2.2rem;
+  height: 2.2rem;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid rgba(121, 224, 188, 0.45);
+  background: rgba(255, 255, 255, 0.94);
 }
 
 .brand-kicker {

@@ -9,9 +9,25 @@ const mode = ref('login');
 const fullName = ref('');
 const email = ref('');
 const password = ref('');
+const confirmPassword = ref('');
+const showPassword = ref(false);
 const loading = ref(false);
 const feedback = ref('');
 const isError = ref(false);
+
+function passwordIsStrong(value) {
+  return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(value);
+}
+
+function setMode(nextMode) {
+  mode.value = nextMode;
+  feedback.value = '';
+  isError.value = false;
+
+  if (nextMode === 'login') {
+    confirmPassword.value = '';
+  }
+}
 
 function routeAfterLogin(user) {
   const traderIntentId = getVisitTraderIntent();
@@ -37,6 +53,20 @@ async function submitForm() {
 
   try {
     if (mode.value === 'register') {
+      if (!passwordIsStrong(password.value)) {
+        isError.value = true;
+        feedback.value = 'Password must be at least 8 characters and include uppercase, lowercase, and a number.';
+        loading.value = false;
+        return;
+      }
+
+      if (password.value !== confirmPassword.value) {
+        isError.value = true;
+        feedback.value = 'Password and confirm password do not match.';
+        loading.value = false;
+        return;
+      }
+
       await register({
         fullName: fullName.value,
         email: email.value,
@@ -44,8 +74,9 @@ async function submitForm() {
       });
 
       feedback.value = 'Register application sent successfully, please wait for the admin approval.';
-      mode.value = 'login';
+      setMode('login');
       password.value = '';
+      confirmPassword.value = '';
       loading.value = false;
       return;
     }
@@ -74,8 +105,8 @@ async function submitForm() {
       <p class="subtitle">Mobile-first onboarding for clients, staff, and admin users.</p>
 
       <div class="tabs">
-        <button type="button" :class="{ active: mode === 'login' }" @click="mode = 'login'">Login</button>
-        <button type="button" :class="{ active: mode === 'register' }" @click="mode = 'register'">Register</button>
+        <button type="button" :class="{ active: mode === 'login' }" @click="setMode('login')">Login</button>
+        <button type="button" :class="{ active: mode === 'register' }" @click="setMode('register')">Register</button>
       </div>
 
       <form class="auth-form" @submit.prevent="submitForm">
@@ -85,11 +116,30 @@ async function submitForm() {
         </label>
         <label>
           <span>Email</span>
-          <input v-model="email" type="text" placeholder="admin@gmail.com" required />
+          <input v-model="email" type="email" placeholder="admin@gmail.com" required />
         </label>
         <label>
           <span>Password</span>
-          <input v-model="password" type="password" placeholder="Enter password" required />
+          <input v-model="password" :type="showPassword ? 'text' : 'password'" placeholder="Enter password" required />
+        </label>
+
+        <p v-if="mode === 'register'" class="password-hint">
+          Create a password with at least 8 characters, uppercase, lowercase, and a number.
+        </p>
+
+        <label v-if="mode === 'register'">
+          <span>Confirm Password</span>
+          <input
+            v-model="confirmPassword"
+            :type="showPassword ? 'text' : 'password'"
+            placeholder="Re-enter password"
+            required
+          />
+        </label>
+
+        <label class="show-password">
+          <input v-model="showPassword" type="checkbox" />
+          <span>Show password</span>
         </label>
 
         <button class="submit" type="submit" :disabled="loading">
@@ -177,6 +227,30 @@ label {
 label span {
   font-size: 0.78rem;
   color: #c5f7e2;
+}
+
+.password-hint {
+  margin: 0;
+  color: #ff9aa8;
+  font-size: 0.76rem;
+  line-height: 1.3;
+}
+
+.show-password {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.show-password input[type='checkbox'] {
+  width: 0.95rem;
+  height: 0.95rem;
+  accent-color: #7be6bc;
+}
+
+.show-password span {
+  font-size: 0.78rem;
+  color: #d2ffe8;
 }
 
 input {
