@@ -11,6 +11,7 @@ import {
   listMyProducts,
   placeOrder,
   removeCartItem,
+  updateCartItemQuantity,
   updateTraderProfile,
   updateTraderProfileImage,
   uploadProfileImage,
@@ -40,6 +41,7 @@ traderRouter.get('/marketplace/traders', listMarketplace);
 traderRouter.get('/cart', listCart);
 traderRouter.post('/cart', addItemToCart);
 traderRouter.delete('/cart/:id', removeCartItem);
+traderRouter.patch('/cart/:id/quantity', updateCartItemQuantity);
 traderRouter.post('/orders/place', placeOrder);
 traderRouter.get('/orders', listOrders);
 traderRouter.post('/products', (req, res, next) => {

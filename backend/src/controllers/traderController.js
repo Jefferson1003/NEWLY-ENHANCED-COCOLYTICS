@@ -6,11 +6,13 @@ import {
   addToCart,
   findMarketplaceRows,
   findMarketplaceRowsByTraderId,
+  findCartItemById,
   findProductById,
   listCartByBuyerId,
   listOrdersByBuyerId,
   placeOrderFromCart,
   removeCartItemById,
+  updateCartItemQuantityById,
 } from '../models/marketplaceModel.js';
 import { createProduct, findProductsByTraderId, sanitizeProduct } from '../models/productModel.js';
 import {
@@ -355,6 +357,37 @@ export async function removeCartItem(req, res) {
   }
 }
 
+export async function updateCartItemQuantity(req, res) {
+  const cartItemId = Number(req.params.id);
+  const quantity = Number(req.body?.quantity);
+
+  if (!Number.isInteger(cartItemId) || cartItemId <= 0) {
+    return res.status(400).json({ error: 'Invalid cart item ID.' });
+  }
+
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    return res.status(400).json({ error: 'Quantity must be a positive whole number.' });
+  }
+
+  try {
+    const cartItem = await findCartItemById(req.auth.id, cartItemId);
+    if (!cartItem) {
+      return res.status(404).json({ error: 'Cart item not found.' });
+    }
+
+    if (quantity > Number(cartItem.stock_quantity || 0)) {
+      return res.status(400).json({
+        error: `Only ${cartItem.stock_quantity} stock available for ${cartItem.product_name}.`,
+      });
+    }
+
+    await updateCartItemQuantityById(req.auth.id, cartItemId, quantity);
+    return res.status(200).json({ message: 'Cart quantity updated successfully.' });
+  } catch {
+    return res.status(500).json({ error: 'Could not update cart quantity.' });
+  }
+}
+
 export async function placeOrder(req, res) {
   const fullName = String(req.body?.fullName || '').trim();
   const contactNumber = String(req.body?.contactNumber || '').trim();
@@ -365,6 +398,9 @@ export async function placeOrder(req, res) {
   const barangayName = String(req.body?.barangayName || '').trim();
   const paymentMethod = String(req.body?.paymentMethod || '').trim().toLowerCase();
   const deliveryNotes = String(req.body?.deliveryNotes || '').trim();
+  const selectedCartItemIds = Array.isArray(req.body?.selectedCartItemIds)
+    ? req.body.selectedCartItemIds
+    : [];
 
   if (
     !fullName ||
@@ -385,6 +421,16 @@ export async function placeOrder(req, res) {
     return res.status(400).json({ error: 'Only cash_on_delivery payment method is supported.' });
   }
 
+  const normalizedSelectedIds = [...new Set(
+    selectedCartItemIds
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value > 0)
+  )];
+
+  if (!normalizedSelectedIds.length) {
+    return res.status(400).json({ error: 'Please select at least one cart item to checkout.' });
+  }
+
   const fullAddress = `${streetAddress}, ${barangayName}, ${cityName}, ${provinceName}, ${regionName}`;
 
   try {
@@ -398,7 +444,7 @@ export async function placeOrder(req, res) {
       barangayName,
       fullAddress,
       deliveryNotes,
-    });
+    }, normalizedSelectedIds);
     return res.status(201).json({ message: 'Order placed successfully.', orderId });
   } catch (error) {
     return res.status(400).json({ error: error.message || 'Could not place order.' });

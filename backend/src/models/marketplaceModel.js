@@ -122,11 +122,56 @@ export async function removeCartItemById(buyerId, cartItemId) {
   return result.affectedRows;
 }
 
-export async function placeOrderFromCart(buyerId, checkoutDetails) {
+export async function findCartItemById(buyerId, cartItemId) {
+  const [rows] = await pool.execute(
+    `
+      SELECT
+        ci.id,
+        ci.quantity,
+        p.id AS product_id,
+        p.product_name,
+        p.stock_quantity
+      FROM cart_items ci
+      INNER JOIN products p ON p.id = ci.product_id
+      WHERE ci.id = ? AND ci.buyer_id = ?
+      LIMIT 1
+    `,
+    [cartItemId, buyerId]
+  );
+
+  return rows[0] || null;
+}
+
+export async function updateCartItemQuantityById(buyerId, cartItemId, quantity) {
+  const [result] = await pool.execute(
+    `
+      UPDATE cart_items
+      SET quantity = ?
+      WHERE id = ? AND buyer_id = ?
+    `,
+    [quantity, cartItemId, buyerId]
+  );
+
+  return result.affectedRows;
+}
+
+export async function placeOrderFromCart(buyerId, checkoutDetails, selectedCartItemIds = []) {
   const connection = await pool.getConnection();
 
   try {
     await connection.beginTransaction();
+
+    const normalizedSelectedIds = [...new Set(
+      selectedCartItemIds
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0)
+    )];
+
+    if (!normalizedSelectedIds.length) {
+      throw new Error('Please select at least one cart item to checkout.');
+    }
+
+    const selectedPlaceholders = normalizedSelectedIds.map(() => '?').join(', ');
 
     const [cartRows] = await connection.execute(
       `
@@ -143,13 +188,18 @@ export async function placeOrderFromCart(buyerId, checkoutDetails) {
         FROM cart_items ci
         INNER JOIN products p ON p.id = ci.product_id
         WHERE ci.buyer_id = ?
+          AND ci.id IN (${selectedPlaceholders})
         FOR UPDATE
       `,
-      [buyerId]
+      [buyerId, ...normalizedSelectedIds]
     );
 
     if (!cartRows.length) {
-      throw new Error('Your cart is empty.');
+      throw new Error('No valid selected cart items were found.');
+    }
+
+    if (cartRows.length !== normalizedSelectedIds.length) {
+      throw new Error('Some selected cart items are no longer available. Please refresh your cart.');
     }
 
     for (const row of cartRows) {
@@ -237,8 +287,9 @@ export async function placeOrderFromCart(buyerId, checkoutDetails) {
       `
         DELETE FROM cart_items
         WHERE buyer_id = ?
+          AND id IN (${selectedPlaceholders})
       `,
-      [buyerId]
+      [buyerId, ...normalizedSelectedIds]
     );
 
     await connection.commit();

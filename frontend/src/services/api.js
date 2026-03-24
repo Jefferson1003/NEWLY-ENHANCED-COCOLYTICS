@@ -141,6 +141,13 @@ export function removeCartItem(id) {
   });
 }
 
+export function updateCartItemQuantity(id, quantity) {
+  return request(`/api/trader/cart/${id}/quantity`, {
+    method: 'PATCH',
+    body: JSON.stringify({ quantity }),
+  });
+}
+
 export function placeMyOrder(payload) {
   return request('/api/trader/orders/place', {
     method: 'POST',
