@@ -22,12 +22,16 @@ import {
   findMarketplaceRows,
   findMarketplaceRowsByTraderId,
   findCartItemById,
+  findOrderByBuyerId,
   findProductById,
+  findSalesOrderStatusByTraderId,
   listCartByBuyerId,
   listOrdersByBuyerId,
   listSalesOrderItemsByTraderId,
   placeOrderFromCart,
   removeCartItemById,
+  updateOrderStatusByBuyerId,
+  updateSalesOrderStatusByTraderId,
   updateCartItemQuantityById,
 } from '../models/marketplaceModel.js';
 import {
@@ -578,6 +582,7 @@ export async function listOrders(req, res) {
           deliveryFullAddress: row.delivery_full_address || '',
           paymentMethod: row.payment_method || 'cash_on_delivery',
           deliveryNotes: row.delivery_notes || '',
+          cancellationReason: row.cancellation_reason || '',
           createdAt: row.order_created_at,
           items: [],
         });
@@ -624,6 +629,7 @@ export async function listSalesOrders(req, res) {
           deliveryFullAddress: row.delivery_full_address || '',
           paymentMethod: row.payment_method || 'cash_on_delivery',
           deliveryNotes: row.delivery_notes || '',
+          cancellationReason: row.cancellation_reason || '',
           createdAt: row.order_created_at,
           items: [],
         });
@@ -645,6 +651,118 @@ export async function listSalesOrders(req, res) {
     return res.status(200).json({ orders: Array.from(ordersMap.values()) });
   } catch {
     return res.status(500).json({ error: 'Could not fetch sales orders.' });
+  }
+}
+
+export async function updateSalesOrderStatus(req, res) {
+  const orderId = Number(req.params.orderId);
+  const status = String(req.body?.status || '').trim().toLowerCase();
+
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return res.status(400).json({ error: 'Invalid order ID.' });
+  }
+
+  if (!['to_ship', 'to_receive'].includes(status)) {
+    return res.status(400).json({ error: 'status must be to_ship or to_receive.' });
+  }
+
+  try {
+    const currentOrder = await findSalesOrderStatusByTraderId(req.auth.id, orderId);
+    if (!currentOrder) {
+      return res.status(404).json({ error: 'Order not found for your products.' });
+    }
+
+    const currentStatus = String(currentOrder.status || '').toLowerCase();
+
+    if (status === 'to_ship' && currentStatus !== 'pending') {
+      return res.status(400).json({ error: 'Only pending orders can be accepted to to_ship.' });
+    }
+
+    if (status === 'to_receive' && currentStatus !== 'to_ship') {
+      return res.status(400).json({ error: 'Only to_ship orders can be updated to to_receive.' });
+    }
+
+    const affectedRows = await updateSalesOrderStatusByTraderId(req.auth.id, orderId, status);
+    if (!affectedRows) {
+      return res.status(404).json({ error: 'Order not found for your products.' });
+    }
+
+    return res.status(200).json({
+      message: 'Order status updated successfully.',
+      orderId,
+      status,
+    });
+  } catch {
+    return res.status(500).json({ error: 'Could not update sales order status.' });
+  }
+}
+
+export async function cancelMyOrder(req, res) {
+  const orderId = Number(req.params.orderId);
+  const cancellationReason = String(req.body?.cancellationReason || '').trim();
+
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return res.status(400).json({ error: 'Invalid order ID.' });
+  }
+
+  if (!cancellationReason) {
+    return res.status(400).json({ error: 'cancellationReason is required.' });
+  }
+
+  try {
+    const order = await findOrderByBuyerId(req.auth.id, orderId);
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found.' });
+    }
+
+    const status = String(order.status || '').toLowerCase();
+    if (status !== 'pending') {
+      return res.status(400).json({ error: 'Order can only be cancelled before it is shipped.' });
+    }
+
+    const affectedRows = await updateOrderStatusByBuyerId(
+      req.auth.id,
+      orderId,
+      'cancelled',
+      cancellationReason
+    );
+
+    if (!affectedRows) {
+      return res.status(404).json({ error: 'Order not found.' });
+    }
+
+    return res.status(200).json({ message: 'Order cancelled successfully.' });
+  } catch {
+    return res.status(500).json({ error: 'Could not cancel order.' });
+  }
+}
+
+export async function markMyOrderReceived(req, res) {
+  const orderId = Number(req.params.orderId);
+
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return res.status(400).json({ error: 'Invalid order ID.' });
+  }
+
+  try {
+    const order = await findOrderByBuyerId(req.auth.id, orderId);
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found.' });
+    }
+
+    const status = String(order.status || '').toLowerCase();
+    if (status !== 'to_receive') {
+      return res.status(400).json({ error: 'Only to_receive orders can be completed.' });
+    }
+
+    const affectedRows = await updateOrderStatusByBuyerId(req.auth.id, orderId, 'completed');
+    if (!affectedRows) {
+      return res.status(404).json({ error: 'Order not found.' });
+    }
+
+    return res.status(200).json({ message: 'Order marked as received. Transaction completed.' });
+  } catch {
+    return res.status(500).json({ error: 'Could not complete order.' });
   }
 }
 

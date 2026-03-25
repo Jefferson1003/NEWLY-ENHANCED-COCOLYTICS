@@ -224,8 +224,38 @@ export function fetchMyOrders() {
   return request('/api/trader/orders');
 }
 
+export function cancelMyOrder(orderId, cancellationReason) {
+  return request(`/api/trader/orders/${orderId}/cancel`, {
+    method: 'PATCH',
+    body: JSON.stringify({ cancellationReason }),
+  }, {
+    successMessage: 'Order cancelled successfully.',
+  });
+}
+
+export function markMyOrderReceived(orderId) {
+  return request(`/api/trader/orders/${orderId}/received`, {
+    method: 'PATCH',
+  }, {
+    successMessage: 'Order marked as received.',
+  });
+}
+
 export function fetchTraderSalesOrders() {
   return request('/api/trader/orders/sales');
+}
+
+export function updateTraderSalesOrderStatus(orderId, status) {
+  return request(`/api/trader/orders/sales/${orderId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  }, {
+    successMessage: status === 'to_ship'
+      ? 'Order accepted and marked as To Ship.'
+      : status === 'to_receive'
+        ? 'Order marked as To Receive.'
+        : 'Order status updated successfully.',
+  });
 }
 
 export function fetchTraderMessageContacts() {

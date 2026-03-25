@@ -3,7 +3,7 @@ import { ref, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import ConfirmationModal from '../../components/ConfirmationModal.vue';
 import TraderSidebar from '../../components/TraderSidebar.vue';
-import { fetchMe, fetchTraderMessageContacts, fetchTraderProducts } from '../../services/api';
+import { fetchMe, fetchTraderMessageContacts, fetchTraderProducts, fetchTraderSalesOrders } from '../../services/api';
 import { clearSession, getUser, SESSION_UPDATED_EVENT } from '../../services/session';
 
 const router = useRouter();
@@ -13,9 +13,11 @@ const sidebarOpen = ref(false);
 const showLogoutConfirm = ref(false);
 const lowStockCount = ref(0);
 const unreadMessagesCount = ref(0);
+const toAcceptCount = ref(0);
 
 const INVENTORY_UPDATED_EVENT = 'cocolytics-inventory-updated';
 const MESSAGE_UPDATED_EVENT = 'cocolytics-messages-updated';
+const SALES_ORDERS_UPDATED_EVENT = 'cocolytics-sales-orders-updated';
 
 function syncProfileFromSession() {
   const user = getUser();
@@ -59,6 +61,16 @@ async function loadUnreadMessagesCount() {
   }
 }
 
+async function loadToReceiveCount() {
+  try {
+    const data = await fetchTraderSalesOrders();
+    const orders = data.orders || [];
+    toAcceptCount.value = orders.filter((order) => String(order.status || '').toLowerCase() === 'pending').length;
+  } catch {
+    toAcceptCount.value = 0;
+  }
+}
+
 function logout() {
   clearSession();
   router.push('/auth');
@@ -90,16 +102,19 @@ onMounted(() => {
   loadProfile();
   loadLowStockCount();
   loadUnreadMessagesCount();
+  loadToReceiveCount();
 
   window.addEventListener(SESSION_UPDATED_EVENT, syncProfileFromSession);
   window.addEventListener(INVENTORY_UPDATED_EVENT, loadLowStockCount);
   window.addEventListener(MESSAGE_UPDATED_EVENT, loadUnreadMessagesCount);
+  window.addEventListener(SALES_ORDERS_UPDATED_EVENT, loadToReceiveCount);
 });
 
 onUnmounted(() => {
   window.removeEventListener(SESSION_UPDATED_EVENT, syncProfileFromSession);
   window.removeEventListener(INVENTORY_UPDATED_EVENT, loadLowStockCount);
   window.removeEventListener(MESSAGE_UPDATED_EVENT, loadUnreadMessagesCount);
+  window.removeEventListener(SALES_ORDERS_UPDATED_EVENT, loadToReceiveCount);
 });
 </script>
 
@@ -111,6 +126,7 @@ onUnmounted(() => {
       :profile-image-path="profile?.profileImagePath || ''"
       :low-stock-count="lowStockCount"
       :unread-messages-count="unreadMessagesCount"
+      :to-accept-count="toAcceptCount"
       :is-open="sidebarOpen"
       @logout="requestLogout"
       @close="closeSidebar"

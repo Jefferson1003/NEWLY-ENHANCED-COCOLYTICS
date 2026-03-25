@@ -69,7 +69,10 @@ function messageTrader(trader) {
 
   router.push({
     name: 'trader-messages',
-    query: { traderId: String(traderId) },
+    query: {
+      traderId: String(traderId),
+      traderName: String(trader?.name || 'Trader'),
+    },
   });
 }
 

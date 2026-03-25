@@ -26,6 +26,10 @@ defineProps({
     type: Number,
     default: 0,
   },
+  toAcceptCount: {
+    type: Number,
+    default: 0,
+  },
 });
 
 const emit = defineEmits(['logout', 'close']);
@@ -56,6 +60,10 @@ const emit = defineEmits(['logout', 'close']);
       <router-link to="/trader/profile" @click="emit('close')">Profile</router-link>
       <router-link to="/trader/documents" @click="emit('close')">Documents</router-link>
       <router-link to="/trader/marketplace" @click="emit('close')">Marketplace</router-link>
+      <router-link to="/trader/manage-orders" class="inventory-link" @click="emit('close')">
+        <span>Manage Orders</span>
+        <span v-if="toAcceptCount > 0" class="low-stock-badge">{{ toAcceptCount }} to accept</span>
+      </router-link>
       <router-link to="/trader/inventory" class="inventory-link" @click="emit('close')">
         <span>Inventory</span>
         <span v-if="lowStockCount > 0" class="low-stock-badge">{{ lowStockCount }} low</span>

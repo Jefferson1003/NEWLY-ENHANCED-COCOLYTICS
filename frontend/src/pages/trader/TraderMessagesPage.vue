@@ -26,6 +26,7 @@ const messageStream = ref(null);
 const messageListRef = ref(null);
 const MESSAGE_UPDATED_EVENT = 'cocolytics-messages-updated';
 const threadOpened = ref(false);
+const pendingTraderName = ref('');
 
 const currentUserId = computed(() => Number(getUser()?.id || 0));
 
@@ -177,6 +178,21 @@ function backToChats() {
   threadOpened.value = false;
 }
 
+function syncThreadFromRouteQuery() {
+  const parsedId = Number(route.query.traderId);
+  if (Number.isInteger(parsedId) && parsedId > 0) {
+    selectedTraderId.value = parsedId;
+    threadOpened.value = true;
+    pendingTraderName.value = String(route.query.traderName || '').trim();
+    return true;
+  }
+
+  selectedTraderId.value = null;
+  threadOpened.value = false;
+  pendingTraderName.value = '';
+  return false;
+}
+
 async function loadContacts() {
   loadingContacts.value = true;
   try {
@@ -185,22 +201,7 @@ async function loadContacts() {
     if (contacts.value.length || !selectedTraderId.value) {
       feedback.value = '';
     }
-
-    const queryTraderId = Number(route.query.traderId);
-    const existsInContacts = contacts.value.some(
-      (contact) => Number(contact.traderId) === queryTraderId
-    );
-
-    if (Number.isInteger(queryTraderId) && queryTraderId > 0 && existsInContacts) {
-      selectedTraderId.value = queryTraderId;
-      return;
-    }
-
-    selectedTraderId.value = null;
-    threadOpened.value = false;
-    if (route.query.traderId) {
-      router.replace({ name: 'trader-messages' });
-    }
+    syncThreadFromRouteQuery();
   } catch (error) {
     feedback.value = error.message;
   } finally {
@@ -266,6 +267,7 @@ async function sendMessage() {
 }
 
 onMounted(async () => {
+  syncThreadFromRouteQuery();
   await loadContacts();
   await loadMessages();
   openMessageStream();
@@ -278,24 +280,14 @@ onUnmounted(() => {
 
 watch(
   () => route.query.traderId,
-  async (value) => {
-    const parsedId = Number(value);
-    const existsInContacts = contacts.value.some(
-      (contact) => Number(contact.traderId) === parsedId
-    );
-
-    if (Number.isInteger(parsedId) && parsedId > 0 && existsInContacts && parsedId !== selectedTraderId.value) {
-      selectedTraderId.value = parsedId;
-      threadOpened.value = true;
-      await loadMessages();
+  async () => {
+    const hadThread = syncThreadFromRouteQuery();
+    if (!hadThread) {
+      messages.value = [];
       return;
     }
 
-    if (!value) {
-      selectedTraderId.value = null;
-      messages.value = [];
-      threadOpened.value = false;
-    }
+    await loadMessages();
   }
 );
 
@@ -384,6 +376,7 @@ watch(selectedTraderId, async () => {
               <p class="thread-status">Active</p>
             </div>
           </div>
+          <h2 v-else-if="pendingTraderName">{{ pendingTraderName }}</h2>
           <h2 v-else>Select a chat to start messaging</h2>
         </header>
 
@@ -397,7 +390,7 @@ watch(selectedTraderId, async () => {
             :class="['message-row', { mine: Number(message.senderId) === currentUserId }]"
           >
             <div v-if="Number(message.senderId) !== currentUserId" class="message-avatar">
-              {{ (selectedContact?.traderName || 'T').slice(0, 1).toUpperCase() }}
+              {{ (selectedContact?.traderName || pendingTraderName || 'T').slice(0, 1).toUpperCase() }}
             </div>
             <article :class="['message-bubble', { mine: Number(message.senderId) === currentUserId }]">
               <p>{{ message.messageText }}</p>

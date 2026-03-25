@@ -229,7 +229,7 @@ export async function placeOrderFromCart(buyerId, checkoutDetails, selectedCartI
           payment_method,
           delivery_notes
         )
-        VALUES (?, 'to_ship', ?, ?, ?, ?, ?, ?, ?, ?, 'cash_on_delivery', ?)
+        VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, 'cash_on_delivery', ?)
       `,
       [
         buyerId,
@@ -323,6 +323,7 @@ export async function listOrdersByBuyerId(buyerId) {
         o.delivery_full_address,
         o.payment_method,
         o.delivery_notes,
+        o.cancellation_reason,
         o.created_at AS order_created_at,
         oi.id AS order_item_id,
         oi.product_id,
@@ -361,6 +362,7 @@ export async function listSalesOrderItemsByTraderId(traderId) {
         o.delivery_full_address,
         o.payment_method,
         o.delivery_notes,
+        o.cancellation_reason,
         o.created_at AS order_created_at,
         oi.id AS order_item_id,
         oi.product_id,
@@ -381,4 +383,65 @@ export async function listSalesOrderItemsByTraderId(traderId) {
   );
 
   return rows;
+}
+
+export async function findSalesOrderStatusByTraderId(traderId, orderId) {
+  const [rows] = await pool.execute(
+    `
+      SELECT o.id AS order_id, o.status
+      FROM orders o
+      INNER JOIN order_items oi ON oi.order_id = o.id
+      WHERE o.id = ? AND oi.trader_id = ?
+      LIMIT 1
+    `,
+    [orderId, traderId]
+  );
+
+  return rows[0] || null;
+}
+
+export async function updateSalesOrderStatusByTraderId(traderId, orderId, status) {
+  const [result] = await pool.execute(
+    `
+      UPDATE orders o
+      INNER JOIN order_items oi ON oi.order_id = o.id
+      SET o.status = ?
+      WHERE o.id = ? AND oi.trader_id = ?
+    `,
+    [status, orderId, traderId]
+  );
+
+  return result.affectedRows;
+}
+
+export async function findOrderByBuyerId(buyerId, orderId) {
+  const [rows] = await pool.execute(
+    `
+      SELECT id, status, cancellation_reason
+      FROM orders
+      WHERE id = ? AND buyer_id = ?
+      LIMIT 1
+    `,
+    [orderId, buyerId]
+  );
+
+  return rows[0] || null;
+}
+
+export async function updateOrderStatusByBuyerId(buyerId, orderId, status, cancellationReason = null) {
+  const [result] = await pool.execute(
+    `
+      UPDATE orders
+      SET
+        status = ?,
+        cancellation_reason = CASE
+          WHEN ? = 'cancelled' THEN ?
+          ELSE cancellation_reason
+        END
+      WHERE id = ? AND buyer_id = ?
+    `,
+    [status, status, cancellationReason, orderId, buyerId]
+  );
+
+  return result.affectedRows;
 }

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   addItemToCart,
   addProduct,
+  cancelMyOrder,
   getPublicMarketplaceTraderDetail,
   getTraderProfile,
   listCart,
@@ -12,6 +13,8 @@ import {
   listMessagesWithTrader,
   listOrders,
   listSalesOrders,
+  markMyOrderReceived,
+  updateSalesOrderStatus,
   listMyProducts,
   placeOrder,
   removeCartItem,
@@ -57,7 +60,10 @@ traderRouter.delete('/cart/:id', removeCartItem);
 traderRouter.patch('/cart/:id/quantity', updateCartItemQuantity);
 traderRouter.post('/orders/place', placeOrder);
 traderRouter.get('/orders', listOrders);
+traderRouter.patch('/orders/:orderId/cancel', cancelMyOrder);
+traderRouter.patch('/orders/:orderId/received', markMyOrderReceived);
 traderRouter.get('/orders/sales', listSalesOrders);
+traderRouter.patch('/orders/sales/:orderId/status', updateSalesOrderStatus);
 traderRouter.get('/paper-uploads', listMyPaperUploads);
 traderRouter.post('/paper-uploads', (req, res, next) => {
   uploadPaperFile(req, res, (error) => {

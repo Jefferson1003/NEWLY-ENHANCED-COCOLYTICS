@@ -2,11 +2,13 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
+  cancelMyOrder,
   createTraderProduct,
   fetchCartItems,
   fetchMarketplaceTraders,
   fetchMyOrders,
   fetchTraderProducts,
+  markMyOrderReceived,
   placeMyOrder,
   removeCartItem,
   updateTraderProduct,
@@ -43,7 +45,11 @@ const currentAddress = ref(null);
 const quantityUpdatingIds = ref([]);
 const showCheckoutConfirmModal = ref(false);
 const showProductEditModal = ref(false);
+const showCancelOrderModal = ref(false);
 const editingProduct = ref(null);
+const cancellingOrderId = ref(null);
+const cancellationReason = ref('');
+const orderActionLoadingIds = ref([]);
 const productSaving = ref(false);
 const editProductForm = reactive({
   productName: '',
@@ -54,7 +60,51 @@ const editProductForm = reactive({
 });
 
 const orderCount = computed(() => orders.value.length);
+const inventoryCount = computed(() => products.value.length);
+const orderSearch = ref('');
+const orderStatusFilter = ref('all');
+
+const orderStatusFilters = [
+  { key: 'all', label: 'All' },
+  { key: 'pending', label: 'Pending' },
+  { key: 'to_ship', label: 'To Ship' },
+  { key: 'to_receive', label: 'To Receive' },
+  { key: 'completed', label: 'Completed' },
+  { key: 'cancelled', label: 'Cancelled' },
+];
 const currentUserId = computed(() => Number(getUser()?.id || 0));
+
+function orderMatchesSearch(order, searchText) {
+  if (!searchText) return true;
+
+  const orderId = String(order?.id || '');
+  const status = String(order?.status || '');
+  const fullName = String(order?.customerFullName || '');
+  const contact = String(order?.customerContactNumber || '');
+  const address = String(order?.deliveryFullAddress || '');
+  const deliveryNotes = String(order?.deliveryNotes || '');
+  const itemSummary = (order?.items || [])
+    .map((item) => `${item?.productName || ''} ${item?.traderName || ''}`)
+    .join(' ');
+
+  const combined = `${orderId} ${status} ${fullName} ${contact} ${address} ${deliveryNotes} ${itemSummary}`
+    .toLowerCase();
+
+  return combined.includes(searchText);
+}
+
+const filteredOrders = computed(() => {
+  const activeStatus = String(orderStatusFilter.value || 'all').toLowerCase();
+  const searchText = String(orderSearch.value || '').trim().toLowerCase();
+
+  return orders.value.filter((order) => {
+    const statusMatch = activeStatus === 'all' || normalizeOrderStatus(order.status) === activeStatus;
+    if (!statusMatch) return false;
+    return orderMatchesSearch(order, searchText);
+  });
+});
+
+const filteredOrderCount = computed(() => filteredOrders.value.length);
 
 function isCurrentTraderId(value) {
   const parsed = Number(value);
@@ -200,6 +250,100 @@ function formatOrderStatus(status) {
 
 function formatOrderDate(dateValue) {
   return new Date(dateValue).toLocaleString();
+}
+
+function normalizeOrderStatus(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function isOrderActionLoading(orderId) {
+  return orderActionLoadingIds.value.includes(orderId);
+}
+
+function setOrderActionLoading(orderId, loading) {
+  if (loading) {
+    if (!orderActionLoadingIds.value.includes(orderId)) {
+      orderActionLoadingIds.value = [...orderActionLoadingIds.value, orderId];
+    }
+    return;
+  }
+
+  orderActionLoadingIds.value = orderActionLoadingIds.value.filter((id) => id !== orderId);
+}
+
+function openCancelOrderModal(order) {
+  const orderId = Number(order?.id || 0);
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    feedback.value = 'Invalid order selected.';
+    return;
+  }
+
+  if (normalizeOrderStatus(order.status) !== 'pending') {
+    feedback.value = 'This order can no longer be cancelled.';
+    return;
+  }
+
+  cancellingOrderId.value = orderId;
+  cancellationReason.value = '';
+  showCancelOrderModal.value = true;
+}
+
+function closeCancelOrderModal() {
+  showCancelOrderModal.value = false;
+  cancellingOrderId.value = null;
+  cancellationReason.value = '';
+}
+
+async function submitCancelOrder() {
+  const orderId = Number(cancellingOrderId.value || 0);
+  const reason = String(cancellationReason.value || '').trim();
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    feedback.value = 'Invalid order selected.';
+    return;
+  }
+
+  if (!reason) {
+    feedback.value = 'Please provide cancellation reason.';
+    return;
+  }
+
+  setOrderActionLoading(orderId, true);
+  try {
+    await cancelMyOrder(orderId, reason);
+    const order = orders.value.find((row) => Number(row.id) === orderId);
+    if (order) {
+      order.status = 'cancelled';
+      order.cancellationReason = reason;
+    }
+    closeCancelOrderModal();
+  } catch (error) {
+    feedback.value = error.message;
+  } finally {
+    setOrderActionLoading(orderId, false);
+  }
+}
+
+async function markOrderAsReceived(order) {
+  const orderId = Number(order?.id || 0);
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    feedback.value = 'Invalid order selected.';
+    return;
+  }
+
+  if (normalizeOrderStatus(order.status) !== 'to_receive') {
+    feedback.value = 'Only To Receive orders can be completed.';
+    return;
+  }
+
+  setOrderActionLoading(orderId, true);
+  try {
+    await markMyOrderReceived(orderId);
+    order.status = 'completed';
+  } catch (error) {
+    feedback.value = error.message;
+  } finally {
+    setOrderActionLoading(orderId, false);
+  }
 }
 
 function openCheckoutConfirmation() {
@@ -451,7 +595,10 @@ function messageTrader(trader) {
 
   router.push({
     name: 'trader-messages',
-    query: { traderId: String(traderId) },
+    query: {
+      traderId: String(traderId),
+      traderName: String(trader?.name || 'Trader'),
+    },
   });
 }
 
@@ -592,7 +739,7 @@ onMounted(async () => {
         Add Product
       </button>
       <button type="button" :class="{ active: activeTab === 'inventory' }" @click="activeTab = 'inventory'">
-        My Inventory
+        My Inventory ({{ inventoryCount }})
       </button>
       <button type="button" :class="{ active: activeTab === 'marketplace' }" @click="activeTab = 'marketplace'">
         Marketplace
@@ -641,7 +788,7 @@ onMounted(async () => {
     <p v-if="feedback" class="feedback">{{ feedback }}</p>
 
     <section v-if="activeTab === 'inventory'" class="list-panel">
-      <h2>Your Products</h2>
+      <h2>Your Products ({{ inventoryCount }})</h2>
       <p v-if="loadingProducts" class="muted">Loading products...</p>
       <p v-else-if="!products.length" class="muted">No products yet.</p>
 
@@ -814,12 +961,29 @@ onMounted(async () => {
     </section>
 
     <section v-if="activeTab === 'orders'" class="list-panel">
-      <h2>My Orders ({{ orderCount }})</h2>
+      <h2>My Orders ({{ filteredOrderCount }}/{{ orderCount }})</h2>
+
+      <div class="order-tools">
+        <input
+          v-model="orderSearch"
+          type="text"
+          class="order-search-input"
+          placeholder="Search order #, product, trader, address"
+        />
+        <select v-model="orderStatusFilter" class="order-status-select">
+          <option v-for="item in orderStatusFilters" :key="item.key" :value="item.key">
+            {{ item.label }}
+          </option>
+        </select>
+      </div>
+
+      <p class="order-count-line">Showing {{ filteredOrderCount }} of {{ orderCount }} orders</p>
       <p v-if="loadingOrders" class="muted">Loading orders...</p>
-      <p v-else-if="!orders.length" class="muted">No orders yet.</p>
+      <p v-else-if="!orderCount" class="muted">No orders yet.</p>
+      <p v-else-if="!filteredOrderCount" class="muted">No matching orders found.</p>
 
       <div v-else class="orders-cards">
-        <article v-for="order in orders" :key="order.id" class="order-card">
+        <article v-for="order in filteredOrders" :key="order.id" class="order-card">
           <header class="order-head">
             <div>
               <h3>Order #{{ order.id }}</h3>
@@ -834,6 +998,9 @@ onMounted(async () => {
             <p><strong>Address:</strong> {{ order.deliveryFullAddress || '-' }}</p>
             <p><strong>Payment:</strong> {{ order.paymentMethod || 'cash_on_delivery' }}</p>
             <p><strong>Delivery Notes:</strong> {{ order.deliveryNotes || '-' }}</p>
+            <p v-if="normalizeOrderStatus(order.status) === 'cancelled' && order.cancellationReason">
+              <strong>Cancellation Reason:</strong> {{ order.cancellationReason }}
+            </p>
           </div>
 
           <div class="order-items">
@@ -856,6 +1023,27 @@ onMounted(async () => {
                 <p class="order-qty">Qty: {{ item.quantity }}</p>
               </div>
             </article>
+          </div>
+
+          <div class="order-actions">
+            <button
+              v-if="normalizeOrderStatus(order.status) === 'pending'"
+              type="button"
+              class="mini-btn danger"
+              :disabled="isOrderActionLoading(order.id)"
+              @click="openCancelOrderModal(order)"
+            >
+              {{ isOrderActionLoading(order.id) ? 'Please wait...' : 'Cancel Order' }}
+            </button>
+            <button
+              v-if="normalizeOrderStatus(order.status) === 'to_receive'"
+              type="button"
+              class="mini-btn"
+              :disabled="isOrderActionLoading(order.id)"
+              @click="markOrderAsReceived(order)"
+            >
+              {{ isOrderActionLoading(order.id) ? 'Please wait...' : 'Received' }}
+            </button>
           </div>
         </article>
       </div>
@@ -944,8 +1132,39 @@ onMounted(async () => {
             :disabled="!selectedCartItems.length"
             @click="confirmCheckoutSelection"
           >
-            Confirm Checkout (To Ship)
+            Confirm Checkout (Pending Seller Acceptance)
           </button>
+        </footer>
+      </section>
+    </div>
+
+    <div
+      v-if="showCancelOrderModal"
+      class="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Cancel order"
+      @click.self="closeCancelOrderModal"
+    >
+      <section class="modal-card product-edit-modal">
+        <header class="modal-head">
+          <h3>Cancel Order</h3>
+          <button type="button" class="mini-btn" @click="closeCancelOrderModal">Close</button>
+        </header>
+
+        <label>
+          Reason for cancellation
+          <textarea
+            v-model="cancellationReason"
+            rows="4"
+            maxlength="500"
+            placeholder="Enter reason here"
+          ></textarea>
+        </label>
+
+        <footer class="modal-actions">
+          <button type="button" class="mini-btn" @click="closeCancelOrderModal">Back</button>
+          <button type="button" class="mini-btn danger" @click="submitCancelOrder">Confirm Cancel</button>
         </footer>
       </section>
     </div>
@@ -1105,6 +1324,29 @@ button:disabled {
 .muted {
   color: #c2f7e0;
   margin-top: 0.65rem;
+}
+
+.order-tools {
+  margin-top: 0.75rem;
+  display: grid;
+  grid-template-columns: 1fr 200px;
+  gap: 0.5rem;
+}
+
+.order-search-input,
+.order-status-select {
+  border: 1px solid rgba(133, 229, 197, 0.45);
+  border-radius: 10px;
+  background: rgba(5, 27, 37, 0.75);
+  color: #ecfff7;
+  padding: 0.58rem 0.65rem;
+  font: inherit;
+}
+
+.order-count-line {
+  margin: 0.55rem 0 0;
+  color: #c8fce6;
+  font-size: 0.84rem;
 }
 
 .products {
@@ -1531,6 +1773,14 @@ button:disabled {
   font-size: 0.86rem;
 }
 
+.order-actions {
+  margin-top: 0.55rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1646,6 +1896,10 @@ button:disabled {
 }
 
 @media (max-width: 560px) {
+  .order-tools {
+    grid-template-columns: 1fr;
+  }
+
   .cart-row {
     grid-template-columns: 22px 60px 1fr auto;
     gap: 0.45rem;
