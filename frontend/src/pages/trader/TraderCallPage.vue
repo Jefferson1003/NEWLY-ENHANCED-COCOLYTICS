@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
 import { fetchTraderMessageContacts, sendTraderCallSignal } from '../../services/api';
 import { toMediaUrl } from '../../services/media';
 import { getUser } from '../../services/session';
@@ -17,6 +17,12 @@ const callId = ref(null);
 const isMuted = ref(false);
 const isCameraOff = ref(false);
 const active = ref(false);
+const callTerminated = ref(false);
+const allowLeaveAfterEnd = ref(false);
+const showOngoingPrompt = ref(false);
+const connectedAtMs = ref(null);
+const durationSeconds = ref(0);
+const endedDurationSeconds = ref(0);
 
 const stageRef = ref(null);
 const localPreviewRef = ref(null);
@@ -43,10 +49,34 @@ const canUseFacingModeSwitch = ref(false);
 const currentUserId = computed(() => Number(getUser()?.id || 0));
 const partnerId = computed(() => Number(route.query.traderId || 0));
 const incoming = computed(() => String(route.query.incoming || '') === '1');
-const isAndroidDevice = computed(() => /Android/i.test(navigator.userAgent || ''));
+const isiOSDevice = computed(() => /iPad|iPhone|iPod/i.test(navigator.userAgent || ''));
 const canFlipCamera = computed(
-  () => callMode.value === 'video' && isAndroidDevice.value && (videoDevices.value.length > 1 || canUseFacingModeSwitch.value)
+  () => callMode.value === 'video' && (videoDevices.value.length > 1 || canUseFacingModeSwitch.value || isiOSDevice.value)
 );
+const hasRemoteVideoTrack = computed(() => {
+  const tracks = remoteStream?.getVideoTracks?.() || [];
+  return tracks.some((track) => track.readyState === 'live' && track.enabled !== false);
+});
+const showEndedCard = computed(() => callTerminated.value);
+const showWaitingCard = computed(() => !callTerminated.value && (!active.value || !showVideoStreams.value));
+const showVideoStreams = computed(() => callMode.value === 'video' && active.value && !callTerminated.value && hasRemoteVideoTrack.value);
+const endedDurationLabel = computed(() => formatDuration(endedDurationSeconds.value));
+const waitingStatusLabel = computed(() => {
+  if (callStatus.value === 'Connected' && !showVideoStreams.value) {
+    return 'Waiting for camera/video...';
+  }
+
+  return callStatus.value;
+});
+const isCallOngoing = computed(() => {
+  if (callTerminated.value || allowLeaveAfterEnd.value) {
+    return false;
+  }
+
+  const liveStatuses = ['calling...', 'ringing...', 'connecting...', 'connected'];
+  const normalizedStatus = String(callStatus.value || '').trim().toLowerCase();
+  return Boolean(peerConnection || localStream || liveStatuses.includes(normalizedStatus));
+});
 
 let unsubscribeCall = null;
 let peerConnection = null;
@@ -54,7 +84,66 @@ let localStream = null;
 let remoteStream = null;
 let ringtoneAudioContext = null;
 let ringtoneTimer = null;
+let durationTimer = null;
+let endRedirectTimer = null;
 const pendingRemoteCandidates = [];
+
+function formatDuration(totalSeconds) {
+  const safeSeconds = Math.max(0, Number(totalSeconds || 0));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const seconds = safeSeconds % 60;
+
+  if (hours > 0) {
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function startDurationTicker() {
+  if (connectedAtMs.value === null) {
+    connectedAtMs.value = Date.now();
+  }
+
+  if (durationTimer) {
+    clearInterval(durationTimer);
+    durationTimer = null;
+  }
+
+  durationTimer = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - connectedAtMs.value) / 1000);
+    durationSeconds.value = Math.max(0, elapsed);
+  }, 1000);
+}
+
+function stopDurationTicker() {
+  if (durationTimer) {
+    clearInterval(durationTimer);
+    durationTimer = null;
+  }
+}
+
+function clearEndRedirectTimer() {
+  if (endRedirectTimer) {
+    clearTimeout(endRedirectTimer);
+    endRedirectTimer = null;
+  }
+}
+
+function scheduleEndRedirectToMessages() {
+  clearEndRedirectTimer();
+  endRedirectTimer = setTimeout(() => {
+    router.replace({ name: 'trader-messages', query: { traderId: String(partnerId.value || '') } });
+  }, 5000);
+}
+
+function markCallEnded(reason = 'Call ended') {
+  stopDurationTicker();
+  endedDurationSeconds.value = Math.max(0, durationSeconds.value);
+  callStatus.value = reason;
+  scheduleEndRedirectToMessages();
+}
 
 function buildRtcConfig() {
   return {
@@ -92,6 +181,25 @@ function setDefaultLocalPreviewPosition() {
   localPreviewX.value = Math.max(0, stageRect.width - previewRect.width - margin);
   localPreviewY.value = Math.max(0, stageRect.height - previewRect.height - margin);
   localPreviewReady.value = true;
+}
+
+function schedulePreviewFit(resetToDefault = false) {
+  if (callMode.value !== 'video') {
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (resetToDefault || !localPreviewReady.value) {
+        setDefaultLocalPreviewPosition();
+      }
+      clampLocalPreviewPosition();
+    });
+  });
+}
+
+function handleViewportResize() {
+  schedulePreviewFit(false);
 }
 
 const localPreviewStyle = computed(() => {
@@ -283,6 +391,8 @@ function resetMediaStreams() {
   if (remoteVideoRef.value) {
     remoteVideoRef.value.srcObject = null;
   }
+
+  durationSeconds.value = Math.max(0, durationSeconds.value);
 }
 
 function cleanupConnection() {
@@ -296,6 +406,7 @@ function cleanupConnection() {
 
   pendingRemoteCandidates.splice(0, pendingRemoteCandidates.length);
   stopRingingTone();
+  stopDurationTicker();
   resetMediaStreams();
 }
 
@@ -365,7 +476,7 @@ async function startLocalMedia() {
   await refreshVideoDevices();
   await nextTick();
   if (wantsVideo) {
-    setDefaultLocalPreviewPosition();
+    schedulePreviewFit(true);
   }
 }
 
@@ -401,11 +512,15 @@ async function createPeerConnection() {
       callStatus.value = 'Connected';
       active.value = true;
       stopRingingTone();
+      startDurationTicker();
+      schedulePreviewFit(false);
     }
 
     if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
-      callStatus.value = 'Call ended';
+      markCallEnded('Call ended');
       active.value = false;
+      callTerminated.value = true;
+      allowLeaveAfterEnd.value = true;
       stopRingingTone();
     }
   };
@@ -455,12 +570,15 @@ async function sendOffer() {
 }
 
 async function endCall(leavePage = true) {
+  callTerminated.value = true;
+  allowLeaveAfterEnd.value = true;
   await sendSignal('call:end', {});
+  markCallEnded('Call ended');
   cleanupConnection();
   active.value = false;
 
   if (leavePage) {
-    router.push({ name: 'trader-messages', query: { traderId: String(partnerId.value || '') } });
+    router.replace({ name: 'trader-messages', query: { traderId: String(partnerId.value || '') } });
   }
 }
 
@@ -536,6 +654,61 @@ async function recoverPreviousVideoTrack(previousSettings = {}) {
   }
 }
 
+async function forceRestartMediaForFlip(preferredConstraint) {
+  if (!peerConnection) {
+    throw new Error('Call connection is not ready.');
+  }
+
+  const previousTracks = localStream ? [...localStream.getTracks()] : [];
+  for (const track of previousTracks) {
+    track.stop();
+  }
+
+  const restartedStream = await navigator.mediaDevices.getUserMedia({
+    audio: true,
+    video: preferredConstraint,
+  });
+
+  localStream = restartedStream;
+
+  const newAudioTrack = restartedStream.getAudioTracks()[0] || null;
+  const newVideoTrack = restartedStream.getVideoTracks()[0] || null;
+
+  for (const sender of peerConnection.getSenders()) {
+    if (!sender.track) {
+      continue;
+    }
+
+    if (sender.track.kind === 'audio' && newAudioTrack) {
+      await sender.replaceTrack(newAudioTrack);
+    }
+
+    if (sender.track.kind === 'video' && newVideoTrack) {
+      await sender.replaceTrack(newVideoTrack);
+    }
+  }
+
+  if (localVideoRef.value) {
+    localVideoRef.value.srcObject = localStream;
+  }
+
+  if (isMuted.value && newAudioTrack) {
+    newAudioTrack.enabled = false;
+  }
+
+  if (isCameraOff.value && newVideoTrack) {
+    newVideoTrack.enabled = false;
+  }
+
+  const nextFacingMode = String(newVideoTrack?.getSettings?.().facingMode || '').toLowerCase();
+  if (nextFacingMode === 'user' || nextFacingMode === 'environment') {
+    cameraFacingMode.value = nextFacingMode;
+  }
+
+  await refreshVideoDevices();
+  schedulePreviewFit(false);
+}
+
 async function flipCamera() {
   if (!canFlipCamera.value || !localStream) {
     return;
@@ -568,15 +741,28 @@ async function flipCamera() {
   let releasedForRetry = false;
 
   const openStreamByFacing = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: { facingMode: { ideal: nextFacingMode } },
-    });
-    const track = stream.getVideoTracks()[0] || null;
-    if (!track) {
-      throw new Error('Could not access alternate camera.');
+    const constraintsToTry = [
+      { facingMode: { exact: nextFacingMode } },
+      { facingMode: { ideal: nextFacingMode } },
+      { facingMode: nextFacingMode },
+    ];
+
+    for (const constraint of constraintsToTry) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: constraint,
+        });
+        const track = stream.getVideoTracks()[0] || null;
+        if (track) {
+          return track;
+        }
+      } catch {
+        // Keep trying fallback constraints.
+      }
     }
-    return track;
+
+    throw new Error('Could not access alternate camera.');
   };
 
   try {
@@ -632,10 +818,16 @@ async function flipCamera() {
       await replaceLocalVideoTrack(newTrack);
       feedback.value = '';
     } catch (innerError) {
-      if (releasedForRetry) {
-        await recoverPreviousVideoTrack(previousSettings);
+      try {
+        await forceRestartMediaForFlip({ facingMode: { ideal: nextFacingMode } });
+        feedback.value = '';
+        return;
+      } catch {
+        if (releasedForRetry) {
+          await recoverPreviousVideoTrack(previousSettings);
+        }
+        feedback.value = 'Could not start video source for camera flip.';
       }
-      feedback.value = 'Could not start video source for camera flip.';
     }
   }
 }
@@ -686,15 +878,19 @@ async function handleCallEvent(rawEvent) {
   }
 
   if (signalType === 'call:decline') {
-    callStatus.value = 'Declined';
+    markCallEnded('Declined');
     active.value = false;
+    callTerminated.value = true;
+    allowLeaveAfterEnd.value = true;
     stopRingingTone();
     return;
   }
 
   if (signalType === 'call:end') {
-    callStatus.value = 'Call ended';
+    markCallEnded('Call ended');
     active.value = false;
+    callTerminated.value = true;
+    allowLeaveAfterEnd.value = true;
     stopRingingTone();
     cleanupConnection();
     return;
@@ -731,10 +927,25 @@ async function handleCallEvent(rawEvent) {
 }
 
 function goBack() {
-  endCall(true);
+  if (isCallOngoing.value) {
+    showOngoingPrompt.value = true;
+    return;
+  }
+
+  router.replace({ name: 'trader-messages', query: { traderId: String(partnerId.value || '') } });
+}
+
+function closeOngoingPrompt() {
+  showOngoingPrompt.value = false;
 }
 
 async function initializeCallPage() {
+  callTerminated.value = false;
+  allowLeaveAfterEnd.value = false;
+  connectedAtMs.value = null;
+  durationSeconds.value = 0;
+  endedDurationSeconds.value = 0;
+
   const parsedMode = String(route.query.mode || 'audio').toLowerCase();
   callMode.value = parsedMode === 'video' ? 'video' : 'audio';
   const parsedCallId = Number(route.query.callId);
@@ -774,8 +985,25 @@ watch(
 );
 
 onMounted(() => {
+  document.body.style.overflow = 'hidden';
   initializeCallPage();
-  window.addEventListener('resize', clampLocalPreviewPosition);
+  window.addEventListener('resize', handleViewportResize);
+  window.visualViewport?.addEventListener?.('resize', handleViewportResize);
+});
+
+watch(showVideoStreams, (visible) => {
+  if (visible) {
+    schedulePreviewFit(false);
+  }
+});
+
+onBeforeRouteLeave(() => {
+  if (isCallOngoing.value) {
+    showOngoingPrompt.value = true;
+    return false;
+  }
+
+  return true;
 });
 
 onUnmounted(() => {
@@ -789,7 +1017,11 @@ onUnmounted(() => {
     ringtoneAudioContext.close().catch(() => {});
     ringtoneAudioContext = null;
   }
-  window.removeEventListener('resize', clampLocalPreviewPosition);
+  clearEndRedirectTimer();
+  stopDurationTicker();
+  document.body.style.overflow = '';
+  window.removeEventListener('resize', handleViewportResize);
+  window.visualViewport?.removeEventListener?.('resize', handleViewportResize);
   cleanupConnection();
 });
 </script>
@@ -808,11 +1040,11 @@ onUnmounted(() => {
     <p v-if="feedback" class="feedback">{{ feedback }}</p>
 
     <div ref="stageRef" class="video-stage" :class="{ audio: callMode === 'audio' }">
-      <video ref="remoteVideoRef" autoplay playsinline class="remote-video" />
+      <video v-show="showVideoStreams" ref="remoteVideoRef" autoplay playsinline class="remote-video" />
       <div
         ref="localPreviewRef"
         class="local-preview"
-        :class="{ hidden: callMode === 'audio', dragging: isDraggingPreview }"
+        :class="{ hidden: !showVideoStreams, dragging: isDraggingPreview }"
         :style="localPreviewStyle"
         @pointerdown="onPreviewPointerDown"
         @pointermove="onPreviewPointerMove"
@@ -822,17 +1054,34 @@ onUnmounted(() => {
         <video ref="localVideoRef" autoplay playsinline muted class="local-video" />
       </div>
 
-      <div v-if="callMode === 'audio'" class="audio-card">
+      <div v-if="showWaitingCard" class="state-card waiting">
         <img
           v-if="partner?.profileImagePath"
           :src="toMediaUrl(partner.profileImagePath)"
           :alt="partner?.name || 'Trader'"
-          class="audio-avatar"
+          class="state-avatar"
         />
-        <div v-else class="audio-avatar placeholder">
+        <div v-else class="state-avatar placeholder">
           {{ (partner?.name || 'T').slice(0, 1).toUpperCase() }}
         </div>
-        <p>{{ partner?.name || 'Trader' }}</p>
+        <p class="state-name">{{ partner?.name || 'Trader' }}</p>
+        <p class="state-subtitle">{{ waitingStatusLabel }}</p>
+      </div>
+
+      <div v-if="showEndedCard" class="state-card ended">
+        <img
+          v-if="partner?.profileImagePath"
+          :src="toMediaUrl(partner.profileImagePath)"
+          :alt="partner?.name || 'Trader'"
+          class="state-avatar"
+        />
+        <div v-else class="state-avatar placeholder">
+          {{ (partner?.name || 'T').slice(0, 1).toUpperCase() }}
+        </div>
+        <p class="state-kicker">{{ callModeLabel() }}</p>
+        <p class="state-name">{{ partner?.name || 'Trader' }}</p>
+        <p class="state-subtitle">{{ callStatus }}</p>
+        <p class="state-duration">Duration {{ endedDurationLabel }}</p>
       </div>
     </div>
 
@@ -866,20 +1115,34 @@ onUnmounted(() => {
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16l2.5 2.5c3-3 8-3 11 0L20 16c-4-4.5-12-4.5-16 0z" /></svg>
       </button>
     </footer>
+
+    <div v-if="showOngoingPrompt" class="ongoing-modal" @click.self="closeOngoingPrompt">
+      <div class="ongoing-card" role="dialog" aria-modal="true" aria-label="Call still ongoing">
+        <h2>Call still ongoing</h2>
+        <p>The call is active. End the call first before leaving this page.</p>
+        <button type="button" class="ongoing-btn" @click="closeOngoingPrompt">Continue Call</button>
+      </div>
+    </div>
   </section>
 </template>
 
 <style scoped>
 .call-page {
-  min-height: calc(100vh - 4.4rem);
-  border: 1px solid rgba(81, 105, 138, 0.44);
-  border-radius: 18px;
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  width: 100%;
+  border: 0;
+  border-radius: 0;
   background: radial-gradient(circle at 15% 20%, #223956 0%, #0f1825 58%, #0a111a 100%);
-  padding: 0.95rem;
+  padding: calc(env(safe-area-inset-top, 0px) + 0.95rem) 0.95rem calc(env(safe-area-inset-bottom, 0px) + 0.95rem);
   color: #eef6ff;
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto auto 1fr auto;
   gap: 0.75rem;
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .call-header {
@@ -925,14 +1188,14 @@ onUnmounted(() => {
   border: 1px solid rgba(96, 122, 156, 0.4);
   border-radius: 16px;
   overflow: hidden;
-  min-height: 58vh;
+  min-height: 0;
   background: #08131f;
+  display: grid;
 }
 
 .remote-video {
   width: 100%;
   height: 100%;
-  min-height: 58vh;
   object-fit: cover;
   background: #060c14;
 }
@@ -965,34 +1228,68 @@ onUnmounted(() => {
   display: none;
 }
 
-.audio-card {
+.state-card {
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
-  gap: 0.6rem;
+  align-content: center;
+  gap: 0.65rem;
+  text-align: center;
+  padding: 1.1rem;
+  background: radial-gradient(circle at 50% 10%, rgba(39, 64, 96, 0.95) 0%, rgba(13, 24, 37, 0.96) 72%, rgba(10, 16, 24, 0.98) 100%);
 }
 
-.audio-avatar {
-  width: 90px;
-  height: 90px;
+.state-card.ended {
+  background: radial-gradient(circle at 50% 0%, rgba(41, 64, 92, 0.96) 0%, rgba(12, 21, 34, 0.98) 68%, rgba(8, 14, 22, 1) 100%);
+}
+
+.state-avatar {
+  width: clamp(96px, 18vw, 148px);
+  height: clamp(96px, 18vw, 148px);
   border-radius: 999px;
   object-fit: cover;
-  border: 2px solid rgba(147, 178, 255, 0.48);
+  border: 2px solid rgba(147, 178, 255, 0.56);
+  box-shadow: 0 10px 26px rgba(5, 12, 22, 0.48);
 }
 
-.audio-avatar.placeholder {
+.state-avatar.placeholder {
   display: grid;
   place-items: center;
   background: #263548;
   color: #eef4ff;
-  font-size: 1.25rem;
+  font-size: 1.45rem;
   font-weight: 800;
 }
 
-.audio-card p {
+.state-kicker,
+.state-name,
+.state-subtitle,
+.state-duration {
   margin: 0;
-  color: #d7e7ff;
+}
+
+.state-kicker {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #a2c8ff;
+}
+
+.state-name {
+  color: #eef5ff;
+  font-size: clamp(1.2rem, 4.4vw, 1.9rem);
+  font-weight: 800;
+}
+
+.state-subtitle {
+  color: #c8dcfc;
+  font-size: clamp(0.95rem, 3.1vw, 1.2rem);
+}
+
+.state-duration {
+  color: #dbe8ff;
+  font-size: clamp(0.95rem, 3.1vw, 1.14rem);
   font-weight: 700;
 }
 
@@ -1035,14 +1332,50 @@ onUnmounted(() => {
   cursor: not-allowed;
 }
 
+.ongoing-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  background: rgba(2, 8, 16, 0.64);
+  padding: 1rem;
+}
+
+.ongoing-card {
+  width: min(380px, 100%);
+  border: 1px solid rgba(136, 173, 225, 0.48);
+  border-radius: 14px;
+  background: #142437;
+  padding: 1rem;
+  box-shadow: 0 16px 40px rgba(1, 8, 16, 0.52);
+}
+
+.ongoing-card h2,
+.ongoing-card p {
+  margin: 0;
+}
+
+.ongoing-card p {
+  margin-top: 0.45rem;
+  color: #c7dbfb;
+}
+
+.ongoing-btn {
+  margin-top: 0.85rem;
+  border: 1px solid rgba(148, 186, 239, 0.5);
+  border-radius: 10px;
+  background: #1d3550;
+  color: #eef5ff;
+  padding: 0.45rem 0.75rem;
+  font-weight: 700;
+}
+
 @media (max-width: 860px) {
   .call-page {
-    min-height: calc(100vh - 4rem);
-    padding: 0.7rem;
-  }
-
-  .remote-video {
-    min-height: 54vh;
+    height: 100%;
+    width: 100%;
+    padding: calc(env(safe-area-inset-top, 0px) + 0.7rem) 0.7rem calc(env(safe-area-inset-bottom, 0px) + 0.7rem);
   }
 
   .local-preview {

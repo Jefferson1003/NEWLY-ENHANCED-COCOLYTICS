@@ -1,6 +1,6 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import ConfirmationModal from '../../components/ConfirmationModal.vue';
 import TraderSidebar from '../../components/TraderSidebar.vue';
 import {
@@ -14,6 +14,7 @@ import { clearSession, getUser, SESSION_UPDATED_EVENT } from '../../services/ses
 import { ensureTraderRealtimeStream, subscribeTraderRealtime } from '../../services/traderRealtime';
 
 const router = useRouter();
+const route = useRoute();
 const profile = ref(null);
 const feedback = ref('');
 const sidebarOpen = ref(false);
@@ -25,6 +26,8 @@ const incomingCall = ref(null);
 let unsubscribeCallEvent = null;
 let incomingRingAudioContext = null;
 let incomingRingTimer = null;
+
+const isCallRoute = computed(() => route.name === 'trader-call');
 
 const INVENTORY_UPDATED_EVENT = 'cocolytics-inventory-updated';
 const MESSAGE_UPDATED_EVENT = 'cocolytics-messages-updated';
@@ -288,7 +291,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="trader-layout">
+  <section class="trader-layout" :class="{ 'call-active-layout': isCallRoute }">
     <TraderSidebar
       :user-name="profile?.profileName || profile?.fullName || ''"
       :user-email="profile?.email || ''"
@@ -302,7 +305,7 @@ onUnmounted(() => {
     />
 
     <button
-      v-if="!sidebarOpen"
+      v-if="!sidebarOpen && !isCallRoute"
       :class="['toggle', { open: sidebarOpen }]"
       type="button"
       aria-label="Toggle sidebar"
@@ -315,7 +318,7 @@ onUnmounted(() => {
 
     <div v-if="sidebarOpen" class="overlay" @click="closeSidebar"></div>
 
-    <main class="trader-page">
+    <main class="trader-page" :class="{ 'call-active': isCallRoute }">
       <p v-if="feedback" class="feedback">{{ feedback }}</p>
       <router-view />
 
@@ -354,10 +357,28 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+.trader-layout.call-active-layout {
+  height: 100dvh;
+}
+
 .trader-page {
   padding: 1rem;
   padding-top: 3.2rem;
   color: #effff7;
+}
+
+.trader-page.call-active {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.trader-page.call-active .feedback {
+  display: none;
 }
 
 .toggle {
