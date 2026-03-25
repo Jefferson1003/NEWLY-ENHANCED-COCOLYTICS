@@ -116,22 +116,41 @@ async function submitForm() {
       <p class="subtitle">Mobile-first onboarding for clients, staff, and admin users.</p>
 
       <div class="tabs">
-        <button type="button" :class="{ active: mode === 'login' }" @click="setMode('login')">Login</button>
-        <button type="button" :class="{ active: mode === 'register' }" @click="setMode('register')">Register</button>
+        <button type="button" :class="{ active: mode === 'login' }" @click="setMode('login')">
+          <span class="action-main">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l1.4-1.4L8.8 13H21v-2H8.8l2.6-2.6L10 7l-5 5zM3 5h9V3H3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9v-2H3z"/></svg>
+            <span>Login</span>
+          </span>
+        </button>
+        <button type="button" :class="{ active: mode === 'register' }" @click="setMode('register')">
+          <span class="action-main">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 12c2.2 0 4-1.8 4-4S17.2 4 15 4s-4 1.8-4 4 1.8 4 4 4zm-8-1V8H5V6h2V4h2v2h2v2H9v3zm8 3c-2.7 0-8 1.3-8 4v2h16v-2c0-2.7-5.3-4-8-4z"/></svg>
+            <span>Register</span>
+          </span>
+        </button>
       </div>
 
       <form class="auth-form" @submit.prevent="submitForm">
         <label v-if="mode === 'register'">
           <span>Full Name</span>
-          <input v-model="fullName" type="text" placeholder="Juan Dela Cruz" required />
+          <div class="field-input">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c2.2 0 4-1.8 4-4S14.2 4 12 4 8 5.8 8 8s1.8 4 4 4zm0 2c-3.3 0-6 2.2-6 5v1h12v-1c0-2.8-2.7-5-6-5z"/></svg>
+            <input v-model="fullName" type="text" placeholder="Juan Dela Cruz" required />
+          </div>
         </label>
         <label>
           <span>Email</span>
-          <input v-model="email" type="email" placeholder="admin@gmail.com" required />
+          <div class="field-input">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v12H3V6zm2 2v.5l7 4 7-4V8l-7 4-7-4z"/></svg>
+            <input v-model="email" type="email" placeholder="admin@gmail.com" required />
+          </div>
         </label>
         <label>
           <span>Password</span>
-          <input v-model="password" :type="showPassword ? 'text' : 'password'" placeholder="Enter password" required />
+          <div class="field-input">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2zm-3 0H10V7a2 2 0 1 1 4 0v2z"/></svg>
+            <input v-model="password" :type="showPassword ? 'text' : 'password'" placeholder="Enter password" required />
+          </div>
         </label>
 
         <p v-if="mode === 'register'" class="password-hint">
@@ -140,22 +159,28 @@ async function submitForm() {
 
         <label v-if="mode === 'register'">
           <span>Confirm Password</span>
-          <input
-            v-model="confirmPassword"
-            :type="showPassword ? 'text' : 'password'"
-            placeholder="Re-enter password"
-            required
-          />
+          <div class="field-input">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2zm-3 0H10V7a2 2 0 1 1 4 0v2z"/></svg>
+            <input
+              v-model="confirmPassword"
+              :type="showPassword ? 'text' : 'password'"
+              placeholder="Re-enter password"
+              required
+            />
+          </div>
         </label>
 
         <label v-if="mode === 'register'">
           <span>Why do you want to become a staff?</span>
-          <textarea
-            v-model="staffReason"
-            rows="3"
-            placeholder="Tell us why you want to become a staff member"
-            required
-          ></textarea>
+          <div class="field-input textarea-wrap">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4V4zm3 4v2h10V8H7zm0 4v2h10v-2H7z"/></svg>
+            <textarea
+              v-model="staffReason"
+              rows="3"
+              placeholder="Tell us why you want to become a staff member"
+              required
+            ></textarea>
+          </div>
         </label>
 
         <label class="show-password">
@@ -164,7 +189,11 @@ async function submitForm() {
         </label>
 
         <button class="submit" type="submit" :disabled="loading">
-          {{ loading ? 'Please wait...' : mode === 'login' ? 'Login' : 'Register' }}
+          <span class="action-main">
+            <svg v-if="mode === 'login'" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l1.4-1.4L8.8 13H21v-2H8.8l2.6-2.6L10 7l-5 5zM3 5h9V3H3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9v-2H3z"/></svg>
+            <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="M15 12c2.2 0 4-1.8 4-4S17.2 4 15 4s-4 1.8-4 4 1.8 4 4 4zm-8-1V8H5V6h2V4h2v2h2v2H9v3zm8 3c-2.7 0-8 1.3-8 4v2h16v-2c0-2.7-5.3-4-8-4z"/></svg>
+            <span>{{ loading ? 'Please wait...' : mode === 'login' ? 'Login' : 'Register' }}</span>
+          </span>
         </button>
       </form>
 
@@ -230,6 +259,19 @@ h1 {
   padding: 0.62rem 0.72rem;
 }
 
+.action-main {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+.action-main svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
 .tabs button.active {
   background: rgba(75, 192, 154, 0.28);
 }
@@ -279,8 +321,9 @@ input {
   border-radius: 10px;
   background: rgba(7, 25, 33, 0.88);
   color: #eefff8;
-  padding: 0.62rem 0.7rem;
+  padding: 0.62rem 0.7rem 0.62rem 2.25rem;
   font-size: 0.85rem;
+  width: 100%;
 }
 
 textarea {
@@ -288,10 +331,33 @@ textarea {
   border-radius: 10px;
   background: rgba(7, 25, 33, 0.88);
   color: #eefff8;
-  padding: 0.62rem 0.7rem;
+  padding: 0.62rem 0.7rem 0.62rem 2.25rem;
   font-size: 0.85rem;
   font: inherit;
   resize: vertical;
+  width: 100%;
+}
+
+.field-input {
+  position: relative;
+  display: grid;
+}
+
+.field-input svg {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  width: 15px;
+  height: 15px;
+  transform: translateY(-50%);
+  fill: #9deecf;
+  opacity: 0.92;
+  pointer-events: none;
+}
+
+.textarea-wrap svg {
+  top: 0.86rem;
+  transform: none;
 }
 
 .submit {

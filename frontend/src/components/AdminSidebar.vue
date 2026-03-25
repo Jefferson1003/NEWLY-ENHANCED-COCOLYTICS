@@ -28,13 +28,31 @@ const emit = defineEmits(['logout', 'close']);
     </div>
 
     <nav class="nav-links">
-      <router-link to="/admin/dashboard" @click="emit('close')">Dashboard</router-link>
+      <router-link to="/admin/dashboard" @click="emit('close')">
+        <span class="nav-main">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13h8V3H3zm10 8h8v-8h-8zM3 21h8v-6H3zm10-10h8V3h-8z"/></svg>
+          <span>Dashboard</span>
+        </span>
+      </router-link>
       <router-link to="/admin/manage-users" class="pending-link" @click="emit('close')">
-        <span>Manage Users</span>
+        <span class="nav-main">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11c1.7 0 3-1.3 3-3s-1.3-3-3-3-3 1.3-3 3 1.3 3 3 3zM8 11c1.7 0 3-1.3 3-3S9.7 5 8 5 5 6.3 5 8s1.3 3 3 3zm0 2c-2.3 0-7 1.2-7 3.5V19h14v-2.5C15 14.2 10.3 13 8 13zm8 0c-.3 0-.7 0-1.1.1 1.2.8 2.1 1.9 2.1 3.4V19h7v-2.5c0-2.3-4.7-3.5-7-3.5z"/></svg>
+          <span>Manage Users</span>
+        </span>
         <span v-if="pendingClientCount > 0" class="pending-badge">{{ pendingClientCount }} pending</span>
       </router-link>
-      <router-link to="/admin/staff-applications" @click="emit('close')">Staff Applications</router-link>
-      <router-link to="/admin/paper-approvals" @click="emit('close')">Paper Approvals</router-link>
+      <router-link to="/admin/staff-applications" @click="emit('close')">
+        <span class="nav-main">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c2.2 0 4-1.8 4-4S14.2 4 12 4 8 5.8 8 8s1.8 4 4 4zm0 2c-3.3 0-6 2.2-6 5v1h12v-1c0-2.8-2.7-5-6-5z"/></svg>
+          <span>Staff Applications</span>
+        </span>
+      </router-link>
+      <router-link to="/admin/paper-approvals" @click="emit('close')">
+        <span class="nav-main">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm8 1.5V8h4.5"/></svg>
+          <span>Paper Approvals</span>
+        </span>
+      </router-link>
     </nav>
 
     <button type="button" class="logout" @click="emit('logout')">Logout</button>
@@ -114,6 +132,21 @@ h1 {
   padding: 0.6rem 0.7rem;
   font-weight: 700;
   font-size: 0.86rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nav-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.nav-main svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
 }
 
 .pending-link {
