@@ -1,6 +1,6 @@
 import { reactive } from 'vue';
 
-const DEFAULT_DURATION = 3600;
+const DEFAULT_DURATION = 2000;
 const state = reactive({
   items: [],
 });
@@ -51,7 +51,7 @@ export function toastSuccess(message, title = 'Success') {
 }
 
 export function toastError(message, title = 'Error') {
-  pushToast({ type: 'error', title, message, duration: 4600 });
+  pushToast({ type: 'error', title, message });
 }
 
 export function toastInfo(message, title = 'Info') {
