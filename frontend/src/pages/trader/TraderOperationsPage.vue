@@ -4,6 +4,7 @@ import { fetchTraderPaperUploads, fetchTraderProducts, fetchTraderSalesOrders } 
 
 const activeFilter = ref('scanner');
 const loading = ref(false);
+const exporting = ref(false);
 const feedback = ref('');
 const products = ref([]);
 const salesOrders = ref([]);
@@ -278,6 +279,209 @@ function formatCurrency(value) {
   }).format(Number(value || 0));
 }
 
+function applySheetTitleStyle(cell) {
+  cell.font = { name: 'Calibri', size: 16, bold: true, color: { argb: 'FFE8FFF4' } };
+  cell.alignment = { vertical: 'middle', horizontal: 'left' };
+  cell.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FF0D3F4D' },
+  };
+  cell.border = {
+    top: { style: 'thin', color: { argb: 'FF78DFC1' } },
+    left: { style: 'thin', color: { argb: 'FF78DFC1' } },
+    bottom: { style: 'thin', color: { argb: 'FF78DFC1' } },
+    right: { style: 'thin', color: { argb: 'FF78DFC1' } },
+  };
+}
+
+function applyTableHeaderStyle(row) {
+  row.eachCell((cell) => {
+    cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFD8FFF2' } };
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF155160' },
+    };
+    cell.alignment = { vertical: 'middle', horizontal: 'left' };
+    cell.border = {
+      top: { style: 'thin', color: { argb: 'FF245F6A' } },
+      left: { style: 'thin', color: { argb: 'FF245F6A' } },
+      bottom: { style: 'thin', color: { argb: 'FF245F6A' } },
+      right: { style: 'thin', color: { argb: 'FF245F6A' } },
+    };
+  });
+}
+
+function applyTableBodyStyle(row, isEven) {
+  row.eachCell((cell) => {
+    cell.font = { name: 'Calibri', size: 10, color: { argb: 'FFD8FFF1' } };
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: isEven ? 'FF0E3C47' : 'FF0A2D38' },
+    };
+    cell.alignment = { vertical: 'middle', horizontal: 'left' };
+    cell.border = {
+      top: { style: 'thin', color: { argb: 'FF174D58' } },
+      left: { style: 'thin', color: { argb: 'FF174D58' } },
+      bottom: { style: 'thin', color: { argb: 'FF174D58' } },
+      right: { style: 'thin', color: { argb: 'FF174D58' } },
+    };
+  });
+}
+
+async function exportReportsToExcel() {
+  if (exporting.value) {
+    return;
+  }
+
+  exporting.value = true;
+  feedback.value = '';
+
+  try {
+    const { default: ExcelJS } = await import('exceljs');
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Cocolytics';
+    workbook.created = new Date();
+
+    const overview = workbook.addWorksheet('Operations Report', { views: [{ showGridLines: false }] });
+    overview.columns = [
+      { width: 34 },
+      { width: 22 },
+      { width: 22 },
+      { width: 22 },
+    ];
+
+    overview.mergeCells('A1:D1');
+    overview.getCell('A1').value = 'Cocolytics Trader Operations Report';
+    applySheetTitleStyle(overview.getCell('A1'));
+
+    overview.mergeCells('A2:D2');
+    overview.getCell('A2').value = `Generated: ${new Date().toLocaleString()}`;
+    overview.getCell('A2').font = { name: 'Calibri', size: 10, color: { argb: 'FFBDEEDC' } };
+    overview.getCell('A2').fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF0A2F3A' },
+    };
+
+    const summaryHeader = overview.addRow(['Summary Statistics', '', '', '']);
+    overview.mergeCells(`A${summaryHeader.number}:D${summaryHeader.number}`);
+    applySheetTitleStyle(overview.getCell(`A${summaryHeader.number}`));
+
+    const summaryTableHeader = overview.addRow(['Metric', 'Value', 'Metric', 'Value']);
+    applyTableHeaderStyle(summaryTableHeader);
+
+    const summaryRows = [
+      [summaryStats.value[0]?.label || 'Total Revenue', summaryStats.value[0]?.value || formatCurrency(0), summaryStats.value[1]?.label || 'Total Items Sold', summaryStats.value[1]?.value || '0'],
+      [summaryStats.value[2]?.label || 'Total Orders', summaryStats.value[2]?.value || '0', summaryStats.value[3]?.label || 'Average Rating', summaryStats.value[3]?.value || '0.0/5.0'],
+    ];
+
+    summaryRows.forEach((entry, index) => {
+      const row = overview.addRow(entry);
+      applyTableBodyStyle(row, index % 2 === 0);
+    });
+
+    overview.addRow([]);
+
+    const topHeader = overview.addRow(['Top Products', '', '', '']);
+    overview.mergeCells(`A${topHeader.number}:D${topHeader.number}`);
+    applySheetTitleStyle(overview.getCell(`A${topHeader.number}`));
+
+    const topTableHeader = overview.addRow(['Product', 'Size', 'Quantity', 'Tag']);
+    applyTableHeaderStyle(topTableHeader);
+
+    const topRows = topProducts.value.length
+      ? topProducts.value.slice(0, 10).map((row, index) => [row.productName, row.size, row.quantity, index < 3 ? 'Trending' : ''])
+      : [['No sold products yet', '-', 0, '-']];
+
+    topRows.forEach((entry, index) => {
+      const row = overview.addRow(entry);
+      applyTableBodyStyle(row, index % 2 === 0);
+    });
+
+    const monthlySheet = workbook.addWorksheet('Monthly Breakdown', { views: [{ showGridLines: false }] });
+    monthlySheet.columns = [
+      { width: 28 },
+      { width: 14 },
+      { width: 16 },
+      { width: 18 },
+    ];
+
+    monthlySheet.mergeCells('A1:D1');
+    monthlySheet.getCell('A1').value = 'Monthly Breakdown';
+    applySheetTitleStyle(monthlySheet.getCell('A1'));
+
+    const monthlyHeader = monthlySheet.addRow(['Month', 'Orders', 'Items Sold', 'Revenue']);
+    applyTableHeaderStyle(monthlyHeader);
+
+    const monthlyRows = monthlyBreakdown.value.length
+      ? monthlyBreakdown.value
+      : [{ label: 'No monthly data yet', orders: 0, itemsSold: 0, revenue: 0 }];
+
+    monthlyRows.forEach((entry, index) => {
+      const row = monthlySheet.addRow([
+        entry.label,
+        Number(entry.orders || 0),
+        Number(entry.itemsSold || 0),
+        Number(entry.revenue || 0),
+      ]);
+      applyTableBodyStyle(row, index % 2 === 0);
+      row.getCell(4).numFmt = '[$₱-340A]#,##0.00';
+    });
+
+    const yearlySheet = workbook.addWorksheet('Yearly Breakdown', { views: [{ showGridLines: false }] });
+    yearlySheet.columns = [
+      { width: 18 },
+      { width: 14 },
+      { width: 16 },
+      { width: 18 },
+    ];
+
+    yearlySheet.mergeCells('A1:D1');
+    yearlySheet.getCell('A1').value = 'Yearly Breakdown';
+    applySheetTitleStyle(yearlySheet.getCell('A1'));
+
+    const yearlyHeader = yearlySheet.addRow(['Year', 'Orders', 'Items Sold', 'Revenue']);
+    applyTableHeaderStyle(yearlyHeader);
+
+    const yearlyRows = yearlyBreakdown.value.length
+      ? yearlyBreakdown.value
+      : [{ year: 'No yearly data yet', orders: 0, itemsSold: 0, revenue: 0 }];
+
+    yearlyRows.forEach((entry, index) => {
+      const row = yearlySheet.addRow([
+        entry.year,
+        Number(entry.orders || 0),
+        Number(entry.itemsSold || 0),
+        Number(entry.revenue || 0),
+      ]);
+      applyTableBodyStyle(row, index % 2 === 0);
+      row.getCell(4).numFmt = '[$₱-340A]#,##0.00';
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([
+      buffer,
+    ], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+    const fileDate = new Date().toISOString().slice(0, 10);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `cocolytics-operations-report-${fileDate}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    feedback.value = error?.message || 'Could not export report to Excel.';
+  } finally {
+    exporting.value = false;
+  }
+}
+
 async function loadOperationsData() {
   loading.value = true;
   feedback.value = '';
@@ -316,7 +520,18 @@ onMounted(loadOperationsData);
     </nav>
 
     <section class="panel">
-      <h2>{{ filterLabel }}</h2>
+      <div class="panel-head">
+        <h2>{{ filterLabel }}</h2>
+        <button
+          v-if="activeFilter === 'reports'"
+          type="button"
+          class="export-btn"
+          :disabled="exporting"
+          @click="exportReportsToExcel"
+        >
+          {{ exporting ? 'Exporting...' : 'Export Excel' }}
+        </button>
+      </div>
       <p v-if="feedback" class="feedback">{{ feedback }}</p>
       <p v-if="loading" class="muted">Loading operations data...</p>
 
@@ -378,6 +593,7 @@ onMounted(loadOperationsData);
       <section v-if="!loading && activeFilter === 'reports'" class="report-tables">
         <article class="table-block">
           <h3>Monthly Breakdown</h3>
+          <p class="table-hint">Swipe left or right to view all columns.</p>
           <div class="table-wrap">
             <table>
               <thead>
@@ -405,6 +621,7 @@ onMounted(loadOperationsData);
 
         <article class="table-block">
           <h3>Yearly Breakdown</h3>
+          <p class="table-hint">Swipe left or right to view all columns.</p>
           <div class="table-wrap">
             <table>
               <thead>
@@ -498,6 +715,29 @@ onMounted(loadOperationsData);
 
 .panel h2 {
   margin: 0;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.export-btn {
+  border: 1px solid rgba(128, 228, 143, 0.45);
+  border-radius: 10px;
+  background: linear-gradient(140deg, rgba(20, 95, 87, 0.95), rgba(13, 68, 72, 0.95));
+  color: #eafff4;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 0.48rem 0.72rem;
+  cursor: pointer;
+}
+
+.export-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }
 
 .feedback {
@@ -685,6 +925,7 @@ onMounted(loadOperationsData);
   margin-top: 0.9rem;
   display: grid;
   gap: 0.8rem;
+  min-width: 0;
 }
 
 .table-block {
@@ -692,6 +933,8 @@ onMounted(loadOperationsData);
   border-radius: 12px;
   background: rgba(5, 26, 36, 0.62);
   padding: 0.75rem;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .table-block h3 {
@@ -702,13 +945,43 @@ onMounted(loadOperationsData);
 
 .table-wrap {
   margin-top: 0.6rem;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
+  padding-bottom: 0.24rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(119, 222, 184, 0.65) rgba(10, 44, 58, 0.5);
+  max-width: 100%;
+  min-width: 0;
+}
+
+.table-wrap::-webkit-scrollbar {
+  height: 9px;
+}
+
+.table-wrap::-webkit-scrollbar-track {
+  background: rgba(10, 44, 58, 0.5);
+  border-radius: 99px;
+}
+
+.table-wrap::-webkit-scrollbar-thumb {
+  background: rgba(119, 222, 184, 0.65);
+  border-radius: 99px;
+}
+
+.table-hint {
+  margin: 0.42rem 0 0;
+  color: #9fdfca;
+  font-size: 0.75rem;
 }
 
 table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
-  min-width: 540px;
+  min-width: 620px;
 }
 
 th,
@@ -766,6 +1039,15 @@ th {
 
   .summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .panel-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .export-btn {
+    width: 100%;
   }
 }
 </style>

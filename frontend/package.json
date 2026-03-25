@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "exceljs": "^4.4.0",
     "vue": "^3.4.15",
     "vue-router": "^5.0.4"
   },
