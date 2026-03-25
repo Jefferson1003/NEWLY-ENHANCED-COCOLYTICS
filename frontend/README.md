@@ -1,7 +1,34 @@
-# Vue 3 + Vite
+# Cocolytics Frontend
 
-This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+## Install Flow
 
-## Recommended IDE Setup
+The app now supports both install methods from the UI:
 
-- [VS Code](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur) + [TypeScript Vue Plugin (Volar)](https://marketplace.visualstudio.com/items?itemName=Vue.vscode-typescript-vue-plugin).
+- Native Android package download (preferred on Android)
+- Browser install prompt (PWA fallback)
+
+### Home Install Button Behavior
+
+When users tap Install:
+
+1. If device is Android and an APK is available, download starts automatically.
+2. If no APK is available, app uses browser install prompt when supported.
+3. If prompt is unavailable (for example iOS), manual install instructions are shown.
+
+## Native APK Setup
+
+Use either option:
+
+- Place APK at `public/downloads/cocolytics-android.apk`
+- Or set `VITE_NATIVE_APP_DOWNLOAD_URL` to a hosted APK URL
+
+Example `.env` entry:
+
+`VITE_NATIVE_APP_DOWNLOAD_URL=https://your-domain.com/releases/cocolytics-android.apk`
+
+## Commands
+
+- `npm install`
+- `npm run dev`
+- `npm run build`
+- `npm run preview`

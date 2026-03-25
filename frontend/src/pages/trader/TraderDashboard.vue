@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import ConfirmationModal from '../../components/ConfirmationModal.vue';
 import TraderSidebar from '../../components/TraderSidebar.vue';
 import { fetchMe, fetchTraderMessageContacts, fetchTraderProducts } from '../../services/api';
+import { getInstallState, requestInstall } from '../../services/install';
 import { clearSession, getUser, SESSION_UPDATED_EVENT } from '../../services/session';
 
 const router = useRouter();
@@ -11,26 +12,15 @@ const profile = ref(null);
 const feedback = ref('');
 const sidebarOpen = ref(false);
 const showLogoutConfirm = ref(false);
-const deferredPrompt = ref(null);
-const installReady = ref(false);
-const isInstalled = ref(false);
 const lowStockCount = ref(0);
 const unreadMessagesCount = ref(0);
+const { installReady, isInstalled } = getInstallState();
 
 const INVENTORY_UPDATED_EVENT = 'cocolytics-inventory-updated';
 const MESSAGE_UPDATED_EVENT = 'cocolytics-messages-updated';
 
-function handleBeforeInstallPrompt(event) {
-  event.preventDefault();
-  deferredPrompt.value = event;
-  installReady.value = true;
-}
-
 function handleAppInstalled() {
   feedback.value = 'Cocolytics is installed. You can launch it from your home screen.';
-  installReady.value = false;
-  isInstalled.value = true;
-  deferredPrompt.value = null;
 }
 
 function syncProfileFromSession() {
@@ -102,30 +92,8 @@ function closeSidebar() {
 }
 
 async function installApp() {
-  if (isInstalled.value) {
-    feedback.value = 'Cocolytics is already installed on this device.';
-    return;
-  }
-
-  if (!deferredPrompt.value) {
-    const userAgent = window.navigator.userAgent || '';
-    const isiOS = /iPad|iPhone|iPod/.test(userAgent);
-
-    feedback.value = isiOS
-      ? 'On iPhone: tap Share, then choose Add to Home Screen.'
-      : 'Install prompt is not ready yet. In Chrome/Edge, open browser menu and tap Install app.';
-    return;
-  }
-
-  deferredPrompt.value.prompt();
-  const choiceResult = await deferredPrompt.value.userChoice;
-  feedback.value =
-    choiceResult.outcome === 'accepted'
-      ? 'Install accepted. Preparing your mobile app experience.'
-      : 'Install dismissed. You can trigger it again later.';
-
-  deferredPrompt.value = null;
-  installReady.value = false;
+  const result = await requestInstall();
+  feedback.value = result.message;
 }
 
 onMounted(() => {
@@ -134,10 +102,6 @@ onMounted(() => {
   loadLowStockCount();
   loadUnreadMessagesCount();
 
-  const standaloneMode = window.matchMedia?.('(display-mode: standalone)')?.matches;
-  isInstalled.value = Boolean(standaloneMode || window.navigator.standalone);
-
-  window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   window.addEventListener('appinstalled', handleAppInstalled);
   window.addEventListener(SESSION_UPDATED_EVENT, syncProfileFromSession);
   window.addEventListener(INVENTORY_UPDATED_EVENT, loadLowStockCount);
@@ -145,7 +109,6 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   window.removeEventListener('appinstalled', handleAppInstalled);
   window.removeEventListener(SESSION_UPDATED_EVENT, syncProfileFromSession);
   window.removeEventListener(INVENTORY_UPDATED_EVENT, loadLowStockCount);

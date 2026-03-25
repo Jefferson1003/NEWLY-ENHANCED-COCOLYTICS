@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import FooterSection from './components/FooterSection.vue'
 import HeaderNav from './components/HeaderNav.vue'
@@ -11,10 +11,7 @@ import timberStack2 from './assets/hero/download (2).jpg'
 import timberStack3 from './assets/hero/download (1).jpg'
 
 const router = useRouter()
-const deferredPrompt = ref(null)
-const installReady = ref(false)
-const isInstalled = ref(false)
-const installResult = ref('')
+const showInstallGuide = ref(false)
 const traders = ref([])
 const tradersLoading = ref(false)
 const traderFeedback = ref('')
@@ -52,15 +49,13 @@ const heroImages = [
   }
 ]
 
-const installLabel = computed(() => {
-  if (isInstalled.value) return 'App Installed'
-  if (installReady.value) return 'Install Mobile App'
-  return 'How To Install'
-})
-
 function toImageUrl(path) {
   if (!path) return ''
   return toMediaUrl(path)
+}
+
+function toggleInstallGuide() {
+  showInstallGuide.value = !showInstallGuide.value
 }
 
 async function loadTraders() {
@@ -100,51 +95,7 @@ function visitTrader(traderId) {
 
 onMounted(() => {
   loadTraders()
-
-  const standaloneMode = window.matchMedia?.('(display-mode: standalone)')?.matches
-  isInstalled.value = Boolean(standaloneMode || window.navigator.standalone)
-
-  window.addEventListener('beforeinstallprompt', (event) => {
-    event.preventDefault()
-    deferredPrompt.value = event
-    installReady.value = true
-  })
-
-  window.addEventListener('appinstalled', () => {
-    installResult.value = 'Cocolytics is installed. You can launch it from your home screen.'
-    installReady.value = false
-    isInstalled.value = true
-    deferredPrompt.value = null
-  })
 })
-
-async function installApp() {
-  if (isInstalled.value) {
-    installResult.value = 'Cocolytics is already installed on this device.'
-    return
-  }
-
-  if (!deferredPrompt.value) {
-    const userAgent = window.navigator.userAgent || ''
-    const isiOS = /iPad|iPhone|iPod/.test(userAgent)
-
-    installResult.value = isiOS
-      ? 'On iPhone: tap Share, then choose Add to Home Screen.'
-      : 'Install prompt is not available yet. In Chrome/Edge, open the browser menu then tap Install app.'
-
-    return
-  }
-
-  deferredPrompt.value.prompt()
-  const choiceResult = await deferredPrompt.value.userChoice
-  installResult.value =
-    choiceResult.outcome === 'accepted'
-      ? 'Install accepted. Preparing your mobile app experience.'
-      : 'Install dismissed. You can trigger it again later.'
-
-  deferredPrompt.value = null
-  installReady.value = false
-}
 </script>
 
 <template>
@@ -163,11 +114,15 @@ async function installApp() {
         </p>
 
         <div class="hero-actions">
-          <button type="button" :disabled="isInstalled" @click="installApp">{{ installLabel }}</button>
+          <button type="button" @click="toggleInstallGuide">How To Install</button>
           <a href="#features">Explore Features</a>
         </div>
 
-        <p v-if="installResult" class="install-status">{{ installResult }}</p>
+        <div v-if="showInstallGuide" class="install-guide">
+          <p>Android (Chrome): open browser menu then tap <strong>Install app</strong>.</p>
+          <p>If you are using a free ngrok link: open the link once, tap <strong>Visit Site</strong> on warning page, refresh, then install again.</p>
+          <p>iPhone (Safari): tap <strong>Share</strong> then <strong>Add to Home Screen</strong>.</p>
+        </div>
       </section>
 
       <section class="hero-gallery reveal-up delayed">
@@ -391,10 +346,23 @@ a:hover {
   box-shadow: 0 8px 20px rgba(38, 197, 158, 0.22);
 }
 
-.install-status {
+.install-guide {
   margin: 0.72rem 0 0;
-  font-size: 0.78rem;
-  color: #b8ffdb;
+  padding: 0.72rem;
+  border-radius: 12px;
+  border: 1px solid rgba(143, 241, 206, 0.36);
+  background: rgba(12, 49, 62, 0.72);
+}
+
+.install-guide p {
+  margin: 0;
+  color: #c9ffe6;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.install-guide p + p {
+  margin-top: 0.45rem;
 }
 
 h2 {

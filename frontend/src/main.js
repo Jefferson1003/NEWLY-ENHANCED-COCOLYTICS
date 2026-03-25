@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import { registerSW } from 'virtual:pwa-register'
 import App from './App.vue'
 import router from './router'
+import { initializeInstallManager } from './services/install'
 import './style.css'
 
 document.title = 'Cocolytics'
@@ -43,24 +44,8 @@ function applyTabIcons() {
 	})
 }
 
-async function clearDevServiceWorkers() {
-	if (!('serviceWorker' in navigator)) return
-
-	const registrations = await navigator.serviceWorker.getRegistrations()
-	await Promise.all(registrations.map((registration) => registration.unregister()))
-
-	if ('caches' in window) {
-		const cacheKeys = await caches.keys()
-		await Promise.all(cacheKeys.map((key) => caches.delete(key)))
-	}
-}
-
 applyTabIcons()
-
-if (import.meta.env.DEV) {
-	clearDevServiceWorkers().catch(() => {})
-} else {
-	registerSW({ immediate: true })
-}
+initializeInstallManager()
+registerSW({ immediate: true })
 
 createApp(App).use(router).mount('#app')
