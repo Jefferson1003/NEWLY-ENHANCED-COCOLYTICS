@@ -1,7 +1,15 @@
 <script setup>
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { login, register } from '../../services/api';
+import {
+  login,
+  register,
+  requestForgotPasswordOtp,
+  resendVerifyEmailOtp,
+  resetForgotPassword,
+  verifyEmailOtp,
+  verifyForgotPasswordOtp,
+} from '../../services/api';
 import { clearVisitTraderIntent, getVisitTraderIntent, saveSession } from '../../services/session';
 
 const router = useRouter();
@@ -16,19 +24,27 @@ const loading = ref(false);
 const feedback = ref('');
 const isError = ref(false);
 
+const verifyEmail = ref('');
+const verifyOtp = ref('');
+
+const forgotEmail = ref('');
+const forgotOtp = ref('');
+const resetToken = ref('');
+const forgotNewPassword = ref('');
+const forgotConfirmPassword = ref('');
+
 function passwordIsStrong(value) {
   return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(value);
 }
 
+function setFeedback(message, error = false) {
+  feedback.value = message;
+  isError.value = error;
+}
+
 function setMode(nextMode) {
   mode.value = nextMode;
-  feedback.value = '';
-  isError.value = false;
-
-  if (nextMode === 'login') {
-    confirmPassword.value = '';
-    staffReason.value = '';
-  }
+  setFeedback('', false);
 }
 
 function routeAfterLogin(user) {
@@ -48,60 +64,163 @@ function routeAfterLogin(user) {
   return router.push('/client');
 }
 
+function openVerifyEmailScreen(prefillEmail = '') {
+  verifyEmail.value = String(prefillEmail || email.value || verifyEmail.value || '').trim();
+  verifyOtp.value = '';
+  setMode('verify-email');
+}
+
+function openForgotPasswordScreen(prefillEmail = '') {
+  forgotEmail.value = String(prefillEmail || email.value || '').trim();
+  forgotOtp.value = '';
+  resetToken.value = '';
+  forgotNewPassword.value = '';
+  forgotConfirmPassword.value = '';
+  setMode('forgot-email');
+}
+
+async function submitLogin() {
+  const result = await login({
+    email: email.value,
+    password: password.value,
+  });
+
+  saveSession(result.token, result.user);
+  routeAfterLogin(result.user);
+}
+
+async function submitRegister() {
+  if (!String(staffReason.value || '').trim()) {
+    throw new Error('Please provide your reason for becoming a staff.');
+  }
+
+  if (!passwordIsStrong(password.value)) {
+    throw new Error('Password must be at least 8 characters and include uppercase, lowercase, and a number.');
+  }
+
+  if (password.value !== confirmPassword.value) {
+    throw new Error('Password and confirm password do not match.');
+  }
+
+  const result = await register({
+    fullName: fullName.value,
+    email: email.value,
+    password: password.value,
+    staffReason: staffReason.value,
+  });
+
+  verifyEmail.value = result.email || email.value;
+  verifyOtp.value = '';
+  setMode('verify-email');
+  setFeedback('Registration complete. Enter the OTP sent to your email to verify.', false);
+}
+
+async function submitVerifyEmailOtp() {
+  const result = await verifyEmailOtp({
+    email: verifyEmail.value,
+    otp: verifyOtp.value,
+  });
+
+  saveSession(result.token, result.user);
+  routeAfterLogin(result.user);
+}
+
+async function resendVerifyOtp() {
+  loading.value = true;
+  setFeedback('', false);
+  try {
+    await resendVerifyEmailOtp({ email: verifyEmail.value });
+    setFeedback('A new verification OTP was sent to your email.', false);
+  } catch (error) {
+    setFeedback(error.message, true);
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function submitForgotEmail() {
+  await requestForgotPasswordOtp({ email: forgotEmail.value });
+  forgotOtp.value = '';
+  setMode('forgot-otp');
+  setFeedback('Enter the OTP sent to your email.', false);
+}
+
+async function submitForgotOtp() {
+  const result = await verifyForgotPasswordOtp({
+    email: forgotEmail.value,
+    otp: forgotOtp.value,
+  });
+
+  resetToken.value = result.resetToken;
+  forgotNewPassword.value = '';
+  forgotConfirmPassword.value = '';
+  setMode('forgot-reset');
+  setFeedback('OTP verified. You can now create a new password.', false);
+}
+
+async function submitForgotResetPassword() {
+  if (forgotNewPassword.value !== forgotConfirmPassword.value) {
+    throw new Error('Password and confirm password do not match.');
+  }
+
+  if (!passwordIsStrong(forgotNewPassword.value)) {
+    throw new Error('Password must be at least 8 characters and include uppercase, lowercase, and a number.');
+  }
+
+  await resetForgotPassword({
+    resetToken: resetToken.value,
+    newPassword: forgotNewPassword.value,
+    confirmPassword: forgotConfirmPassword.value,
+  });
+
+  setMode('login');
+  password.value = '';
+  confirmPassword.value = '';
+  setFeedback('Password reset successful. You can now log in.', false);
+}
+
 async function submitForm() {
   loading.value = true;
-  feedback.value = '';
-  isError.value = false;
+  setFeedback('', false);
 
   try {
     if (mode.value === 'register') {
-      if (!String(staffReason.value || '').trim()) {
-        isError.value = true;
-        feedback.value = 'Please provide your reason for becoming a staff.';
-        loading.value = false;
-        return;
-      }
-
-      if (!passwordIsStrong(password.value)) {
-        isError.value = true;
-        feedback.value = 'Password must be at least 8 characters and include uppercase, lowercase, and a number.';
-        loading.value = false;
-        return;
-      }
-
-      if (password.value !== confirmPassword.value) {
-        isError.value = true;
-        feedback.value = 'Password and confirm password do not match.';
-        loading.value = false;
-        return;
-      }
-
-      await register({
-        fullName: fullName.value,
-        email: email.value,
-        password: password.value,
-        staffReason: staffReason.value,
-      });
-
-      feedback.value = 'Register application sent successfully, please wait for the admin approval.';
-      setMode('login');
-      password.value = '';
-      confirmPassword.value = '';
-      staffReason.value = '';
-      loading.value = false;
+      await submitRegister();
       return;
     }
 
-    const result = await login({
-      email: email.value,
-      password: password.value,
-    });
+    if (mode.value === 'login') {
+      await submitLogin();
+      return;
+    }
 
-    saveSession(result.token, result.user);
-    routeAfterLogin(result.user);
+    if (mode.value === 'verify-email') {
+      await submitVerifyEmailOtp();
+      return;
+    }
+
+    if (mode.value === 'forgot-email') {
+      await submitForgotEmail();
+      return;
+    }
+
+    if (mode.value === 'forgot-otp') {
+      await submitForgotOtp();
+      return;
+    }
+
+    if (mode.value === 'forgot-reset') {
+      await submitForgotResetPassword();
+    }
   } catch (error) {
-    isError.value = true;
-    feedback.value = error.message;
+    if (error.code === 'EMAIL_NOT_VERIFIED') {
+      verifyEmail.value = error.details?.email || email.value;
+      verifyOtp.value = '';
+      setMode('verify-email');
+      setFeedback('Your account is not verified yet. Enter OTP or resend a new code.', true);
+    } else {
+      setFeedback(error.message, true);
+    }
   } finally {
     loading.value = false;
   }
@@ -112,90 +231,144 @@ async function submitForm() {
   <section class="auth-layout">
     <div class="auth-card">
       <p class="kicker">Cocolytics Access</p>
-      <h1>{{ mode === 'login' ? 'Login to your account' : 'Create your account' }}</h1>
-      <p class="subtitle">Mobile-first onboarding for clients, staff, and admin users.</p>
+      <h1 v-if="mode === 'login'">Login to your account</h1>
+      <h1 v-else-if="mode === 'register'">Create your account</h1>
+      <h1 v-else-if="mode === 'verify-email'">Verify your email</h1>
+      <h1 v-else-if="mode === 'forgot-email'">Forgot password</h1>
+      <h1 v-else-if="mode === 'forgot-otp'">Verify reset OTP</h1>
+      <h1 v-else>Create a new password</h1>
+      <p class="subtitle">Step-by-step secure access with OTP verification.</p>
 
-      <div class="tabs">
-        <button type="button" :class="{ active: mode === 'login' }" @click="setMode('login')">
-          <span class="action-main">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l1.4-1.4L8.8 13H21v-2H8.8l2.6-2.6L10 7l-5 5zM3 5h9V3H3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9v-2H3z"/></svg>
-            <span>Login</span>
-          </span>
-        </button>
-        <button type="button" :class="{ active: mode === 'register' }" @click="setMode('register')">
-          <span class="action-main">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 12c2.2 0 4-1.8 4-4S17.2 4 15 4s-4 1.8-4 4 1.8 4 4 4zm-8-1V8H5V6h2V4h2v2h2v2H9v3zm8 3c-2.7 0-8 1.3-8 4v2h16v-2c0-2.7-5.3-4-8-4z"/></svg>
-            <span>Register</span>
-          </span>
-        </button>
+      <div v-if="mode === 'login' || mode === 'register'" class="tabs">
+        <button type="button" :class="{ active: mode === 'login' }" @click="setMode('login')">Login</button>
+        <button type="button" :class="{ active: mode === 'register' }" @click="setMode('register')">Register</button>
       </div>
 
       <form class="auth-form" @submit.prevent="submitForm">
-        <label v-if="mode === 'register'">
-          <span>Full Name</span>
-          <div class="field-input">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c2.2 0 4-1.8 4-4S14.2 4 12 4 8 5.8 8 8s1.8 4 4 4zm0 2c-3.3 0-6 2.2-6 5v1h12v-1c0-2.8-2.7-5-6-5z"/></svg>
+        <template v-if="mode === 'register'">
+          <label>
+            <span>Full Name</span>
             <input v-model="fullName" type="text" placeholder="Juan Dela Cruz" required />
-          </div>
-        </label>
-        <label>
-          <span>Email</span>
-          <div class="field-input">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v12H3V6zm2 2v.5l7 4 7-4V8l-7 4-7-4z"/></svg>
-            <input v-model="email" type="email" placeholder="admin@gmail.com" required />
-          </div>
-        </label>
-        <label>
-          <span>Password</span>
-          <div class="field-input">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2zm-3 0H10V7a2 2 0 1 1 4 0v2z"/></svg>
+          </label>
+          <label>
+            <span>Email</span>
+            <input v-model="email" type="email" placeholder="you@example.com" required />
+          </label>
+          <label>
+            <span>Password</span>
             <input v-model="password" :type="showPassword ? 'text' : 'password'" placeholder="Enter password" required />
-          </div>
-        </label>
-
-        <p v-if="mode === 'register'" class="password-hint">
-          Create a password with at least 8 characters, uppercase, lowercase, and a number.
-        </p>
-
-        <label v-if="mode === 'register'">
-          <span>Confirm Password</span>
-          <div class="field-input">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 9h-1V7a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2zm-3 0H10V7a2 2 0 1 1 4 0v2z"/></svg>
+          </label>
+          <label>
+            <span>Confirm Password</span>
             <input
               v-model="confirmPassword"
               :type="showPassword ? 'text' : 'password'"
-              placeholder="Re-enter password"
+              placeholder="Confirm password"
               required
             />
-          </div>
-        </label>
-
-        <label v-if="mode === 'register'">
-          <span>Why do you want to become a staff?</span>
-          <div class="field-input textarea-wrap">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4V4zm3 4v2h10V8H7zm0 4v2h10v-2H7z"/></svg>
+          </label>
+          <label>
+            <span>Why do you want to become a staff?</span>
             <textarea
               v-model="staffReason"
               rows="3"
-              placeholder="Tell us why you want to become a staff member"
+              placeholder="Tell us your reason"
               required
             ></textarea>
-          </div>
-        </label>
+          </label>
+        </template>
 
-        <label class="show-password">
+        <template v-else-if="mode === 'login'">
+          <label>
+            <span>Email</span>
+            <input v-model="email" type="email" placeholder="you@example.com" required />
+          </label>
+          <label>
+            <span>Password</span>
+            <input v-model="password" :type="showPassword ? 'text' : 'password'" placeholder="Enter password" required />
+          </label>
+        </template>
+
+        <template v-else-if="mode === 'verify-email'">
+          <label>
+            <span>Email</span>
+            <input v-model="verifyEmail" type="email" placeholder="you@example.com" required />
+          </label>
+          <label>
+            <span>OTP (letters and numbers)</span>
+            <input v-model="verifyOtp" type="text" maxlength="8" placeholder="e.g. AB12CD34" required />
+          </label>
+        </template>
+
+        <template v-else-if="mode === 'forgot-email'">
+          <label>
+            <span>Enter your email</span>
+            <input v-model="forgotEmail" type="email" placeholder="you@example.com" required />
+          </label>
+        </template>
+
+        <template v-else-if="mode === 'forgot-otp'">
+          <label>
+            <span>Email</span>
+            <input v-model="forgotEmail" type="email" placeholder="you@example.com" required />
+          </label>
+          <label>
+            <span>OTP</span>
+            <input v-model="forgotOtp" type="text" maxlength="8" placeholder="Enter OTP" required />
+          </label>
+        </template>
+
+        <template v-else>
+          <label>
+            <span>New Password</span>
+            <input
+              v-model="forgotNewPassword"
+              :type="showPassword ? 'text' : 'password'"
+              placeholder="Enter new password"
+              required
+            />
+          </label>
+          <label>
+            <span>Confirm Password</span>
+            <input
+              v-model="forgotConfirmPassword"
+              :type="showPassword ? 'text' : 'password'"
+              placeholder="Confirm new password"
+              required
+            />
+          </label>
+        </template>
+
+        <label class="show-password" v-if="mode !== 'forgot-email' && mode !== 'forgot-otp'">
           <input v-model="showPassword" type="checkbox" />
-          <span>Show password</span>
+          <span>Show password fields</span>
         </label>
 
         <button class="submit" type="submit" :disabled="loading">
-          <span class="action-main">
-            <svg v-if="mode === 'login'" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l1.4-1.4L8.8 13H21v-2H8.8l2.6-2.6L10 7l-5 5zM3 5h9V3H3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9v-2H3z"/></svg>
-            <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="M15 12c2.2 0 4-1.8 4-4S17.2 4 15 4s-4 1.8-4 4 1.8 4 4 4zm-8-1V8H5V6h2V4h2v2h2v2H9v3zm8 3c-2.7 0-8 1.3-8 4v2h16v-2c0-2.7-5.3-4-8-4z"/></svg>
-            <span>{{ loading ? 'Please wait...' : mode === 'login' ? 'Login' : 'Register' }}</span>
-          </span>
+          <span v-if="loading">Please wait...</span>
+          <span v-else-if="mode === 'login'">Login</span>
+          <span v-else-if="mode === 'register'">Register</span>
+          <span v-else-if="mode === 'verify-email'">Verify Email OTP</span>
+          <span v-else-if="mode === 'forgot-email'">Send OTP</span>
+          <span v-else-if="mode === 'forgot-otp'">Verify OTP</span>
+          <span v-else>Reset Password</span>
         </button>
       </form>
+
+      <div class="actions" v-if="mode === 'login'">
+        <button type="button" class="ghost" @click="openVerifyEmailScreen(email)">Verify Email</button>
+        <button type="button" class="ghost" @click="openForgotPasswordScreen(email)">Forgot Password</button>
+      </div>
+
+      <div class="actions" v-else-if="mode === 'verify-email'">
+        <button type="button" class="ghost" @click="resendVerifyOtp" :disabled="loading">Resend OTP</button>
+        <button type="button" class="ghost" @click="setMode('login')">Back to Login</button>
+      </div>
+
+      <div class="actions" v-else-if="mode === 'forgot-email' || mode === 'forgot-otp' || mode === 'forgot-reset'">
+        <button type="button" class="ghost" @click="openForgotPasswordScreen(forgotEmail)">Start Over</button>
+        <button type="button" class="ghost" @click="setMode('login')">Back to Login</button>
+      </div>
 
       <p v-if="feedback" :class="['feedback', { error: isError }]">{{ feedback }}</p>
 
@@ -213,7 +386,7 @@ async function submitForm() {
 }
 
 .auth-card {
-  width: min(100%, 460px);
+  width: min(100%, 520px);
   border-radius: 22px;
   border: 1px solid rgba(95, 213, 176, 0.35);
   background: linear-gradient(160deg, rgba(9, 36, 47, 0.9), rgba(11, 57, 72, 0.76));
@@ -249,7 +422,8 @@ h1 {
 
 .tabs button,
 .submit,
-.back-home {
+.back-home,
+.ghost {
   border: 1px solid rgba(117, 227, 189, 0.4);
   border-radius: 10px;
   background: rgba(13, 47, 59, 0.75);
@@ -257,19 +431,6 @@ h1 {
   font-weight: 700;
   font-size: 0.86rem;
   padding: 0.62rem 0.72rem;
-}
-
-.action-main {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.45rem;
-}
-
-.action-main svg {
-  width: 16px;
-  height: 16px;
-  fill: currentColor;
 }
 
 .tabs button.active {
@@ -292,11 +453,20 @@ label span {
   color: #c5f7e2;
 }
 
-.password-hint {
-  margin: 0;
-  color: #ff9aa8;
-  font-size: 0.76rem;
-  line-height: 1.3;
+input,
+textarea {
+  border: 1px solid rgba(109, 218, 181, 0.35);
+  border-radius: 10px;
+  background: rgba(7, 25, 33, 0.88);
+  color: #eefff8;
+  padding: 0.62rem 0.7rem;
+  font-size: 0.85rem;
+  width: 100%;
+}
+
+textarea {
+  font: inherit;
+  resize: vertical;
 }
 
 .show-password {
@@ -316,58 +486,21 @@ label span {
   color: #d2ffe8;
 }
 
-input {
-  border: 1px solid rgba(109, 218, 181, 0.35);
-  border-radius: 10px;
-  background: rgba(7, 25, 33, 0.88);
-  color: #eefff8;
-  padding: 0.62rem 0.7rem 0.62rem 2.25rem;
-  font-size: 0.85rem;
-  width: 100%;
-}
-
-textarea {
-  border: 1px solid rgba(109, 218, 181, 0.35);
-  border-radius: 10px;
-  background: rgba(7, 25, 33, 0.88);
-  color: #eefff8;
-  padding: 0.62rem 0.7rem 0.62rem 2.25rem;
-  font-size: 0.85rem;
-  font: inherit;
-  resize: vertical;
-  width: 100%;
-}
-
-.field-input {
-  position: relative;
-  display: grid;
-}
-
-.field-input svg {
-  position: absolute;
-  left: 0.75rem;
-  top: 50%;
-  width: 15px;
-  height: 15px;
-  transform: translateY(-50%);
-  fill: #9deecf;
-  opacity: 0.92;
-  pointer-events: none;
-}
-
-.textarea-wrap svg {
-  top: 0.86rem;
-  transform: none;
-}
-
 .submit {
   margin-top: 0.2rem;
   background: linear-gradient(135deg, #9ff9cf, #46d2a6);
   color: #063028;
 }
 
-.submit:disabled {
-  opacity: 0.7;
+.actions {
+  margin-top: 0.6rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.ghost {
+  background: transparent;
 }
 
 .feedback {
@@ -384,12 +517,5 @@ textarea {
   margin-top: 0.75rem;
   width: 100%;
   background: transparent;
-}
-
-@media (min-width: 900px) {
-  .auth-card {
-    width: min(100%, 520px);
-    padding: 1.2rem;
-  }
 }
 </style>

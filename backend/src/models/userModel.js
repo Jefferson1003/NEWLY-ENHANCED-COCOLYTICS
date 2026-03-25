@@ -7,8 +7,8 @@ export function normalizeEmail(email) {
 export async function createClientUser(fullName, email, passwordHash, staffReason = '') {
   const [result] = await pool.execute(
     `
-      INSERT INTO users (full_name, email, password_hash, role, status, staff_reason)
-      VALUES (?, ?, ?, 'client', 'pending_client', ?)
+      INSERT INTO users (full_name, email, password_hash, role, status, staff_reason, is_email_verified, email_verified_at)
+      VALUES (?, ?, ?, 'client', 'pending_client', ?, 0, NULL)
     `,
     [
       String(fullName).trim(),
@@ -27,12 +27,36 @@ export async function findUserForLogin(email) {
 
   const [rows] = await pool.execute(
     `
-      SELECT id, full_name, email, password_hash, role, status, created_at
+      SELECT id, full_name, email, password_hash, role, status, is_email_verified, email_verified_at, created_at
       FROM users
       WHERE email IN (?, ?)
       LIMIT 1
     `,
     [rawEmail, correctedEmail]
+  );
+
+  return rows[0] || null;
+}
+
+export async function findUserByEmail(email) {
+  const normalizedEmail = normalizeEmail(email);
+  const [rows] = await pool.execute(
+    `
+      SELECT
+        id,
+        full_name,
+        email,
+        password_hash,
+        role,
+        status,
+        is_email_verified,
+        email_verified_at,
+        created_at
+      FROM users
+      WHERE email = ?
+      LIMIT 1
+    `,
+    [normalizedEmail]
   );
 
   return rows[0] || null;
@@ -48,6 +72,8 @@ export async function findUserById(id) {
         password_hash,
         role,
         status,
+        is_email_verified,
+        email_verified_at,
         profile_name,
         profile_description,
         contact_number,
@@ -74,6 +100,115 @@ export async function updateUserLastSeenById(id, seenAt = new Date()) {
       WHERE id = ?
     `,
     [seenAt, id]
+  );
+
+  return result.affectedRows;
+}
+
+export async function markUserEmailVerifiedById(id) {
+  const [result] = await pool.execute(
+    `
+      UPDATE users
+      SET is_email_verified = 1, email_verified_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `,
+    [id]
+  );
+
+  return result.affectedRows;
+}
+
+export async function updateUserPasswordHashById(id, passwordHash) {
+  const [result] = await pool.execute(
+    `
+      UPDATE users
+      SET password_hash = ?
+      WHERE id = ?
+    `,
+    [passwordHash, id]
+  );
+
+  return result.affectedRows;
+}
+
+export async function createOtpCode({ userId, email, purpose, otpHash, expiresAt }) {
+  const normalizedEmail = normalizeEmail(email);
+
+  await pool.execute(
+    `
+      UPDATE user_otp_codes
+      SET used_at = CURRENT_TIMESTAMP
+      WHERE email = ?
+        AND purpose = ?
+        AND used_at IS NULL
+    `,
+    [normalizedEmail, purpose]
+  );
+
+  const [result] = await pool.execute(
+    `
+      INSERT INTO user_otp_codes (user_id, email, purpose, otp_hash, expires_at)
+      VALUES (?, ?, ?, ?, ?)
+    `,
+    [userId, normalizedEmail, purpose, otpHash, expiresAt]
+  );
+
+  return result.insertId;
+}
+
+export async function findLatestActiveOtpCode(email, purpose) {
+  const normalizedEmail = normalizeEmail(email);
+  const [rows] = await pool.execute(
+    `
+      SELECT id, user_id, email, purpose, otp_hash, expires_at, verified_at, used_at, created_at
+      FROM user_otp_codes
+      WHERE email = ?
+        AND purpose = ?
+        AND used_at IS NULL
+      ORDER BY id DESC
+      LIMIT 1
+    `,
+    [normalizedEmail, purpose]
+  );
+
+  return rows[0] || null;
+}
+
+export async function findOtpCodeById(id) {
+  const [rows] = await pool.execute(
+    `
+      SELECT id, user_id, email, purpose, otp_hash, expires_at, verified_at, used_at, created_at
+      FROM user_otp_codes
+      WHERE id = ?
+      LIMIT 1
+    `,
+    [id]
+  );
+
+  return rows[0] || null;
+}
+
+export async function markOtpCodeVerifiedById(id) {
+  const [result] = await pool.execute(
+    `
+      UPDATE user_otp_codes
+      SET verified_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `,
+    [id]
+  );
+
+  return result.affectedRows;
+}
+
+export async function markOtpCodeUsedById(id) {
+  const [result] = await pool.execute(
+    `
+      UPDATE user_otp_codes
+      SET used_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `,
+    [id]
   );
 
   return result.affectedRows;
@@ -190,6 +325,8 @@ export function sanitizeUser(user) {
     email: user.email,
     role: user.role,
     status: user.status,
+    isEmailVerified: Boolean(user.is_email_verified),
+    emailVerifiedAt: user.email_verified_at || null,
     profileName: user.full_name || user.profile_name || '',
     profileDescription: user.profile_description || '',
     contactNumber: user.contact_number || '',

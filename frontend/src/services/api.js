@@ -39,7 +39,10 @@ async function request(path, options = {}, meta = {}) {
     if (shouldToastError) {
       toastError(errorMessage);
     }
-    throw new Error(errorMessage);
+    const requestError = new Error(errorMessage);
+    requestError.code = data.code || '';
+    requestError.details = data;
+    throw requestError;
   }
 
   if (shouldToastSuccess) {
@@ -67,6 +70,51 @@ export function login(payload) {
     body: JSON.stringify(payload),
   }, {
     successMessage: 'Login successful.',
+  });
+}
+
+export function resendVerifyEmailOtp(payload) {
+  return request('/api/auth/verify-email/resend', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, {
+    successMessage: 'Verification OTP sent.',
+  });
+}
+
+export function verifyEmailOtp(payload) {
+  return request('/api/auth/verify-email/confirm', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, {
+    successMessage: 'Email verified successfully.',
+  });
+}
+
+export function requestForgotPasswordOtp(payload) {
+  return request('/api/auth/forgot-password/request-otp', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, {
+    successMessage: 'OTP sent if your email exists.',
+  });
+}
+
+export function verifyForgotPasswordOtp(payload) {
+  return request('/api/auth/forgot-password/verify-otp', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, {
+    successMessage: 'OTP verified. Set your new password.',
+  });
+}
+
+export function resetForgotPassword(payload) {
+  return request('/api/auth/forgot-password/reset', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, {
+    successMessage: 'Password reset successful.',
   });
 }
 
