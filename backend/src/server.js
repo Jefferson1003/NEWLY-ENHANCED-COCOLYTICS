@@ -20,6 +20,7 @@ const __dirname = path.dirname(__filename);
 const productUploadsDir = path.resolve(__dirname, '../../frontend/public/uploads/products_img');
 const profileUploadsDir = path.resolve(__dirname, '../../frontend/public/uploads/profile_img');
 const paperUploadsDir = path.resolve(__dirname, '../../frontend/public/uploads/paper_docs');
+const messengerUploadsDir = path.resolve(__dirname, '../../frontend/public/uploads/messenger');
 
 app.use(
   helmet({
@@ -32,6 +33,7 @@ app.use(morgan('dev'));
 app.use('/uploads/products_img', express.static(productUploadsDir));
 app.use('/uploads/profile_img', express.static(profileUploadsDir));
 app.use('/uploads/paper_docs', express.static(paperUploadsDir));
+app.use('/uploads/messenger', express.static(messengerUploadsDir));
 
 app.get('/api/health', health);
 app.get('/api', apiInfo);

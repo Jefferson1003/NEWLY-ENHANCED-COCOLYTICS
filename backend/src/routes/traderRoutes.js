@@ -29,6 +29,7 @@ import {
   uploadPaperFile,
   uploadProfileImage,
   uploadProductImage,
+  uploadMessageImage,
   uploadTraderPaper,
 } from '../controllers/traderController.js';
 import { authRequired, requireRole } from '../middlewares/authMiddleware.js';
@@ -56,7 +57,15 @@ traderRouter.get('/messages/contacts', listMessageContacts);
 traderRouter.get('/messages/stream', streamMessageEvents);
 traderRouter.post('/messages/presence/heartbeat', heartbeatMessagePresence);
 traderRouter.get('/messages/:traderId', listMessagesWithTrader);
-traderRouter.post('/messages/:traderId', sendMessageToTrader);
+traderRouter.post('/messages/:traderId', (req, res, next) => {
+  uploadMessageImage(req, res, (error) => {
+    if (error) {
+      return res.status(400).json({ error: error.message || 'Invalid upload.' });
+    }
+
+    return next();
+  });
+}, sendMessageToTrader);
 traderRouter.post('/messages/:traderId/call-signal', sendCallSignalToTrader);
 traderRouter.get('/cart', listCart);
 traderRouter.post('/cart', addItemToCart);

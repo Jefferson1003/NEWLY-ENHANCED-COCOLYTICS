@@ -1135,11 +1135,11 @@ onUnmounted(() => {
   border: 0;
   border-radius: 0;
   background: radial-gradient(circle at 15% 20%, #223956 0%, #0f1825 58%, #0a111a 100%);
-  padding: calc(env(safe-area-inset-top, 0px) + 0.95rem) 0.95rem calc(env(safe-area-inset-bottom, 0px) + 0.95rem);
+  padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
   color: #eef6ff;
   display: grid;
   grid-template-rows: auto auto 1fr auto;
-  gap: 0.75rem;
+  gap: 0;
   min-height: 0;
   overflow: hidden;
   box-sizing: border-box;
@@ -1149,6 +1149,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.7rem;
+  padding: 0.95rem 0.95rem 0.55rem;
 }
 
 .back-btn {
@@ -1180,13 +1181,14 @@ onUnmounted(() => {
 
 .feedback {
   margin: 0;
+  padding: 0 0.95rem 0.45rem;
   color: #ffb8c5;
 }
 
 .video-stage {
   position: relative;
-  border: 1px solid rgba(96, 122, 156, 0.4);
-  border-radius: 16px;
+  border: 0;
+  border-radius: 0;
   overflow: hidden;
   min-height: 0;
   background: #08131f;
@@ -1297,6 +1299,7 @@ onUnmounted(() => {
   display: flex;
   justify-content: center;
   gap: 0.72rem;
+  padding: 0.7rem 0.95rem calc(env(safe-area-inset-bottom, 0px) + 0.7rem);
 }
 
 .icon-btn {
@@ -1375,7 +1378,19 @@ onUnmounted(() => {
   .call-page {
     height: 100%;
     width: 100%;
-    padding: calc(env(safe-area-inset-top, 0px) + 0.7rem) 0.7rem calc(env(safe-area-inset-bottom, 0px) + 0.7rem);
+    padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
+  }
+
+  .call-header {
+    padding: 0.7rem 0.7rem 0.45rem;
+  }
+
+  .feedback {
+    padding: 0 0.7rem 0.35rem;
+  }
+
+  .controls {
+    padding: 0.6rem 0.7rem calc(env(safe-area-inset-bottom, 0px) + 0.6rem);
   }
 
   .local-preview {

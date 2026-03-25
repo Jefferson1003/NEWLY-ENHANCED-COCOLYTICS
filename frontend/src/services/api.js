@@ -320,6 +320,22 @@ export function sendMessageToTrader(traderId, messageText, options = {}) {
     ? replyToMessageId
     : null;
 
+  if (options.messageImageFile) {
+    const formData = new FormData();
+    formData.append('messageText', String(messageText || ''));
+    if (safeReplyToMessageId) {
+      formData.append('replyToMessageId', String(safeReplyToMessageId));
+    }
+    formData.append('messageImage', options.messageImageFile);
+
+    return request(`/api/trader/messages/${traderId}`, {
+      method: 'POST',
+      body: formData,
+    }, {
+      successMessage: 'Message sent.',
+    });
+  }
+
   return request(`/api/trader/messages/${traderId}`, {
     method: 'POST',
     body: JSON.stringify({

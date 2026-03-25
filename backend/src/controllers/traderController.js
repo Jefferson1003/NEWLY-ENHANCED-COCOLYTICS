@@ -63,6 +63,7 @@ const __dirname = path.dirname(__filename);
 const uploadsDir = path.resolve(__dirname, '../../../frontend/public/uploads/products_img');
 const profileUploadsDir = path.resolve(__dirname, '../../../frontend/public/uploads/profile_img');
 const paperUploadsDir = path.resolve(__dirname, '../../../frontend/public/uploads/paper_docs');
+const messengerUploadsDir = path.resolve(__dirname, '../../../frontend/public/uploads/messenger');
 const PRESENCE_RECENT_WINDOW_MS = 90 * 1000;
 
 const storage = multer.diskStorage({
@@ -142,6 +143,29 @@ export const uploadProfileImage = multer({
   fileFilter,
   limits: { fileSize: 3 * 1024 * 1024 },
 }).single('profileImage');
+
+const messageImageStorage = multer.diskStorage({
+  destination: async (_req, _file, cb) => {
+    try {
+      await mkdir(messengerUploadsDir, { recursive: true });
+      cb(null, messengerUploadsDir);
+    } catch (error) {
+      cb(error);
+    }
+  },
+  filename: (_req, file, cb) => {
+    const extension = path.extname(file.originalname || '').toLowerCase();
+    const safeExt = extension || '.jpg';
+    const uniqueName = `msg-${Date.now()}-${Math.round(Math.random() * 1e9)}${safeExt}`;
+    cb(null, uniqueName);
+  },
+});
+
+export const uploadMessageImage = multer({
+  storage: messageImageStorage,
+  fileFilter,
+  limits: { fileSize: 8 * 1024 * 1024 },
+}).single('messageImage');
 
 function mapMarketplaceRowsToTraders(rows) {
   const tradersMap = new Map();
@@ -925,6 +949,7 @@ export async function listMessagesWithTrader(req, res) {
         senderId: row.sender_id,
         receiverId: row.receiver_id,
         messageText: row.message_text,
+        messageImagePath: row.message_image_path || '',
         replyToMessageId: row.reply_to_message_id || null,
         replyToMessageText: row.reply_to_message_text || '',
         replyToSenderId: row.reply_to_sender_id || null,
@@ -958,6 +983,7 @@ export async function listMessagesWithTrader(req, res) {
 export async function sendMessageToTrader(req, res) {
   const otherTraderId = Number(req.params.traderId);
   const messageText = String(req.body?.messageText || '').trim();
+  const messageImagePath = req.file ? `/uploads/messenger/${req.file.filename}` : '';
   const replyToMessageId = Number(req.body?.replyToMessageId);
   const safeReplyToMessageId = Number.isInteger(replyToMessageId) && replyToMessageId > 0
     ? replyToMessageId
@@ -971,8 +997,8 @@ export async function sendMessageToTrader(req, res) {
     return res.status(400).json({ error: 'You cannot message yourself.' });
   }
 
-  if (!messageText) {
-    return res.status(400).json({ error: 'messageText is required.' });
+  if (!messageText && !messageImagePath) {
+    return res.status(400).json({ error: 'messageText or messageImage is required.' });
   }
 
   if (messageText.length > 2000) {
@@ -986,13 +1012,20 @@ export async function sendMessageToTrader(req, res) {
       return res.status(404).json({ error: 'Trader not found.' });
     }
 
-    const row = await createMessageBetweenTraders(req.auth.id, otherTraderId, messageText, safeReplyToMessageId);
+    const row = await createMessageBetweenTraders(
+      req.auth.id,
+      otherTraderId,
+      messageText,
+      safeReplyToMessageId,
+      messageImagePath
+    );
     const messagePayload = {
       id: row.id,
       conversationId: row.conversation_id,
       senderId: row.sender_id,
       receiverId: row.receiver_id,
       messageText: row.message_text,
+      messageImagePath: row.message_image_path || '',
       replyToMessageId: row.reply_to_message_id || null,
       replyToMessageText: row.reply_to_message_text || '',
       replyToSenderId: row.reply_to_sender_id || null,

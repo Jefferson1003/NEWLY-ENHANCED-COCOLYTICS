@@ -23,6 +23,9 @@ const loadingMessages = ref(false);
 const sending = ref(false);
 const feedback = ref('');
 const messageText = ref('');
+const messageImageInputRef = ref(null);
+const selectedMessageImageFile = ref(null);
+const selectedMessageImagePreview = ref('');
 const contactSearch = ref('');
 const messageStream = ref(null);
 const messageListRef = ref(null);
@@ -118,6 +121,7 @@ function normalizeMessageRow(row) {
     senderId: Number(row?.senderId ?? row?.sender_id ?? 0),
     receiverId: Number(row?.receiverId ?? row?.receiver_id ?? 0),
     messageText: String(row?.messageText ?? row?.message_text ?? '').trim(),
+    messageImagePath: String(row?.messageImagePath ?? row?.message_image_path ?? '').trim(),
     replyToMessageId: Number(row?.replyToMessageId ?? row?.reply_to_message_id ?? 0) || null,
     replyToMessageText: String(row?.replyToMessageText ?? row?.reply_to_message_text ?? '').trim(),
     replyToSenderId: Number(row?.replyToSenderId ?? row?.reply_to_sender_id ?? 0) || null,
@@ -384,6 +388,39 @@ function clearReplyMessage() {
   replyToMessage.value = null;
 }
 
+function clearSelectedMessageImage() {
+  if (selectedMessageImagePreview.value) {
+    URL.revokeObjectURL(selectedMessageImagePreview.value);
+  }
+  selectedMessageImageFile.value = null;
+  selectedMessageImagePreview.value = '';
+  if (messageImageInputRef.value) {
+    messageImageInputRef.value.value = '';
+  }
+}
+
+function openMessageImagePicker() {
+  messageImageInputRef.value?.click?.();
+}
+
+function onMessageImageSelected(event) {
+  const file = event?.target?.files?.[0] || null;
+  if (!file) {
+    clearSelectedMessageImage();
+    return;
+  }
+
+  if (!String(file.type || '').startsWith('image/')) {
+    feedback.value = 'Please select a valid image file.';
+    clearSelectedMessageImage();
+    return;
+  }
+
+  selectedMessageImageFile.value = file;
+  selectedMessageImagePreview.value = URL.createObjectURL(file);
+  feedback.value = '';
+}
+
 function replyPreviewName() {
   if (!replyToMessage.value) {
     return '';
@@ -614,7 +651,7 @@ async function sendMessage() {
   }
 
   const text = String(messageText.value || '').trim();
-  if (!text) {
+  if (!text && !selectedMessageImageFile.value) {
     return;
   }
 
@@ -622,12 +659,14 @@ async function sendMessage() {
   try {
     const data = await sendMessageToTrader(selectedTraderId.value, text, {
       replyToMessageId: replyToMessage.value?.id || null,
+      messageImageFile: selectedMessageImageFile.value || null,
     });
     if (data?.message) {
       upsertMessage(data.message);
     }
     messageText.value = '';
     clearReplyMessage();
+    clearSelectedMessageImage();
     await loadContacts();
     emitMessagesUpdated();
     await scrollMessagesToBottomAfterPaint();
@@ -649,6 +688,9 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  if (selectedMessageImagePreview.value) {
+    URL.revokeObjectURL(selectedMessageImagePreview.value);
+  }
   stopPresenceHeartbeat();
   stopNowTicker();
   closeMessageStream();
@@ -805,7 +847,13 @@ watch(selectedTraderId, async () => {
                 <small>{{ replyToName(item.message) }}</small>
                 <p>{{ item.message.replyToMessageText || 'Original message unavailable.' }}</p>
               </div>
-              <p>{{ item.message.messageText }}</p>
+              <p v-if="item.message.messageText">{{ item.message.messageText }}</p>
+              <img
+                v-if="item.message.messageImagePath"
+                :src="toImageUrl(item.message.messageImagePath)"
+                alt="Message attachment"
+                class="message-image"
+              />
               <span>{{ formatDate(item.message.createdAt) }}</span>
               <small v-if="messageDeliveryLabel(item.message)" class="delivery-label">
                 {{ messageDeliveryLabel(item.message) }}
@@ -825,6 +873,17 @@ watch(selectedTraderId, async () => {
             <small>{{ replyToMessage.messageText }}</small>
             <button type="button" @click="clearReplyMessage">Cancel</button>
           </div>
+          <div v-if="selectedMessageImagePreview" class="image-preview">
+            <img :src="selectedMessageImagePreview" alt="Selected attachment" />
+            <button type="button" @click="clearSelectedMessageImage">Remove image</button>
+          </div>
+          <input
+            ref="messageImageInputRef"
+            type="file"
+            accept="image/*"
+            class="hidden-file-input"
+            @change="onMessageImageSelected"
+          />
           <input
             v-model="messageText"
             type="text"
@@ -832,8 +891,31 @@ watch(selectedTraderId, async () => {
             :disabled="sending || !selectedTraderId"
             @keydown="onComposerKeydown"
           />
-          <button type="submit" :disabled="sending || !selectedTraderId">
-            {{ sending ? '...' : 'Send' }}
+          <button
+            type="button"
+            class="icon-action-btn attach-btn"
+            :disabled="sending || !selectedTraderId"
+            @click="openMessageImagePicker"
+            title="Attach image"
+            aria-label="Attach image"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21 19V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2zM8.5 11A2.5 2.5 0 1 1 11 8.5 2.5 2.5 0 0 1 8.5 11zm-3.5 8 4.5-6 3.5 4.5 2.5-3L19 19z"/>
+            </svg>
+          </button>
+          <button
+            type="submit"
+            class="icon-action-btn send-btn"
+            :disabled="sending || !selectedTraderId"
+            title="Send message"
+            aria-label="Send message"
+          >
+            <svg v-if="sending" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 4a1 1 0 0 1 1 1v3a1 1 0 1 1-2 0V5a1 1 0 0 1 1-1zm0 12a1 1 0 0 1 1 1v3a1 1 0 1 1-2 0v-3a1 1 0 0 1 1-1zm8-5a1 1 0 1 1 0 2h-3a1 1 0 1 1 0-2h3zM7 12a1 1 0 0 1-1 1H3a1 1 0 1 1 0-2h3a1 1 0 0 1 1 1zm10.36-5.95a1 1 0 0 1 1.41 1.41l-2.12 2.12a1 1 0 1 1-1.41-1.41zm-9.9 9.9a1 1 0 0 1 1.41 1.41l-2.12 2.12a1 1 0 1 1-1.41-1.41zm0-9.9L5.34 8.17A1 1 0 1 1 3.93 6.76l2.12-2.12a1 1 0 0 1 1.41 1.41zm9.9 9.9 2.12 2.12a1 1 0 0 1-1.41 1.41l-2.12-2.12a1 1 0 1 1 1.41-1.41z"/>
+            </svg>
+            <svg v-else viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3.4 20.4 20.85 12 3.4 3.6v6.2l12.5 2.2-12.5 2.2z"/>
+            </svg>
           </button>
         </form>
       </section>
@@ -1190,6 +1272,16 @@ watch(selectedTraderId, async () => {
   color: #f4f7ff;
 }
 
+.message-image {
+  margin-top: 0.35rem;
+  width: min(100%, 280px);
+  max-height: 320px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid rgba(140, 161, 195, 0.55);
+  display: block;
+}
+
 .reply-quote {
   border-left: 2px solid rgba(181, 201, 255, 0.62);
   background: rgba(21, 30, 45, 0.5);
@@ -1233,7 +1325,7 @@ watch(selectedTraderId, async () => {
 .composer {
   margin-top: 0.45rem;
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr auto auto;
   gap: 0.45rem;
 }
 
@@ -1243,6 +1335,71 @@ watch(selectedTraderId, async () => {
   border-radius: 10px;
   background: #202734;
   padding: 0.42rem 0.55rem;
+}
+
+.image-preview {
+  grid-column: 1 / -1;
+  border: 1px solid rgba(98, 114, 142, 0.4);
+  border-radius: 10px;
+  background: #202734;
+  padding: 0.42rem;
+}
+
+.image-preview img {
+  width: min(100%, 220px);
+  max-height: 180px;
+  object-fit: cover;
+  border-radius: 8px;
+  display: block;
+  border: 1px solid rgba(111, 132, 170, 0.52);
+}
+
+.image-preview button {
+  margin-top: 0.32rem;
+  border: 0;
+  background: transparent;
+  color: #90adff;
+  padding: 0;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
+.icon-action-btn {
+  border: 1px solid rgba(92, 103, 124, 0.45);
+  border-radius: 999px;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: #ecf2ff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.icon-action-btn svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+
+.attach-btn {
+  background: transparent;
+  border-color: transparent;
+}
+
+.send-btn {
+  background: #2c5cff;
+  border-color: rgba(130, 160, 255, 0.62);
+}
+
+.icon-action-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .reply-preview p,
@@ -1290,6 +1447,16 @@ watch(selectedTraderId, async () => {
   padding: 0.58rem 0.82rem;
   font-weight: 800;
   cursor: pointer;
+}
+
+.composer .attach-btn {
+  background: transparent;
+  border-color: transparent;
+}
+
+.composer .send-btn {
+  background: #2c5cff;
+  border-color: rgba(130, 160, 255, 0.62);
 }
 
 .muted {

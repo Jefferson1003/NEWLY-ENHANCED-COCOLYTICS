@@ -63,7 +63,11 @@ export async function listTraderMessageContacts(traderId) {
         u.profile_image_path,
         u.last_seen_at,
         c.id AS conversation_id,
-        lm.message_text AS last_message,
+        CASE
+          WHEN NULLIF(TRIM(COALESCE(lm.message_text, '')), '') IS NOT NULL THEN lm.message_text
+          WHEN lm.message_image_path IS NOT NULL THEN '[Image]'
+          ELSE ''
+        END AS last_message,
         lm.sender_id AS last_sender_id,
         lm.created_at AS last_message_at,
         COALESCE(um.unread_count, 0) AS unread_count
@@ -72,7 +76,7 @@ export async function listTraderMessageContacts(traderId) {
         ON c.trader_one_id = LEAST(u.id, ?)
        AND c.trader_two_id = GREATEST(u.id, ?)
       LEFT JOIN (
-        SELECT m1.conversation_id, m1.message_text, m1.sender_id, m1.created_at
+        SELECT m1.conversation_id, m1.message_text, m1.message_image_path, m1.sender_id, m1.created_at
         FROM chat_messages m1
         INNER JOIN (
           SELECT conversation_id, MAX(id) AS max_id
@@ -118,6 +122,7 @@ export async function listMessagesBetweenTraders(currentTraderId, otherTraderId,
           m.sender_id,
           m.receiver_id,
           m.message_text,
+          m.message_image_path,
           m.reply_to_message_id,
           m.is_read,
           m.created_at,
@@ -142,6 +147,7 @@ export async function listMessagesBetweenTraders(currentTraderId, otherTraderId,
           m.sender_id,
           m.receiver_id,
           m.message_text,
+          m.message_image_path,
           m.reply_to_message_id,
           m.is_read,
           m.created_at,
@@ -185,7 +191,7 @@ export async function listMessagesBetweenTraders(currentTraderId, otherTraderId,
   return rows.reverse();
 }
 
-export async function createMessageBetweenTraders(senderId, receiverId, messageText, replyToMessageId = null) {
+export async function createMessageBetweenTraders(senderId, receiverId, messageText, replyToMessageId = null, messageImagePath = null) {
   const conversationId = await getOrCreateConversationId(senderId, receiverId);
   const normalizedReplyToId = Number(replyToMessageId);
   const safeReplyToId = Number.isInteger(normalizedReplyToId) && normalizedReplyToId > 0
@@ -215,11 +221,19 @@ export async function createMessageBetweenTraders(senderId, receiverId, messageT
         sender_id,
         receiver_id,
         message_text,
+        message_image_path,
         reply_to_message_id
       )
-      VALUES (?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?)
     `,
-    [conversationId, senderId, receiverId, String(messageText || '').trim(), safeReplyToId]
+    [
+      conversationId,
+      senderId,
+      receiverId,
+      String(messageText || '').trim(),
+      String(messageImagePath || '').trim() || null,
+      safeReplyToId,
+    ]
   );
 
   await pool.execute(
@@ -239,6 +253,7 @@ export async function createMessageBetweenTraders(senderId, receiverId, messageT
         m.sender_id,
         m.receiver_id,
         m.message_text,
+        m.message_image_path,
         m.reply_to_message_id,
         m.is_read,
         m.created_at,
