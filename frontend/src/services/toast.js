@@ -1,6 +1,6 @@
 import { reactive } from 'vue';
 
-const DEFAULT_DURATION = 2000;
+const DEFAULT_DURATION = 1000;
 const state = reactive({
   items: [],
 });

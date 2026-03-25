@@ -848,12 +848,20 @@ watch(selectedTraderId, async () => {
                 <p>{{ item.message.replyToMessageText || 'Original message unavailable.' }}</p>
               </div>
               <p v-if="item.message.messageText">{{ item.message.messageText }}</p>
-              <img
+              <a
                 v-if="item.message.messageImagePath"
-                :src="toImageUrl(item.message.messageImagePath)"
-                alt="Message attachment"
-                class="message-image"
-              />
+                :href="toImageUrl(item.message.messageImagePath)"
+                class="message-image-link"
+                target="_blank"
+                rel="noopener noreferrer"
+                :download="`message-${item.message.id}.jpg`"
+              >
+                <img
+                  :src="toImageUrl(item.message.messageImagePath)"
+                  alt="Message attachment"
+                  class="message-image"
+                />
+              </a>
               <span>{{ formatDate(item.message.createdAt) }}</span>
               <small v-if="messageDeliveryLabel(item.message)" class="delivery-label">
                 {{ messageDeliveryLabel(item.message) }}
@@ -1274,12 +1282,17 @@ watch(selectedTraderId, async () => {
 
 .message-image {
   margin-top: 0.35rem;
-  width: min(100%, 280px);
-  max-height: 320px;
+  width: min(100%, 220px);
+  max-height: 240px;
   object-fit: cover;
   border-radius: 10px;
   border: 1px solid rgba(140, 161, 195, 0.55);
   display: block;
+}
+
+.message-image-link {
+  display: inline-block;
+  line-height: 0;
 }
 
 .reply-quote {
