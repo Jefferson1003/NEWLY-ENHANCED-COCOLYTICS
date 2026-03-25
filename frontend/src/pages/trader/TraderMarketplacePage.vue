@@ -54,6 +54,39 @@ const editProductForm = reactive({
 });
 
 const orderCount = computed(() => orders.value.length);
+const currentUserId = computed(() => Number(getUser()?.id || 0));
+
+function isCurrentTraderId(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 && parsed === currentUserId.value;
+}
+
+function sanitizeTraderRows(rows) {
+  return (rows || [])
+    .filter((trader) => !isCurrentTraderId(trader?.traderId))
+    .map((trader) => {
+      const products = (trader.products || []).filter((product) => {
+        const ownerId = Number(
+          product?.traderId
+          || product?.userId
+          || product?.ownerId
+          || product?.sellerId
+          || trader?.traderId
+          || 0
+        );
+
+        return !isCurrentTraderId(ownerId);
+      });
+
+      return {
+        ...trader,
+        products,
+        totalProducts: products.length,
+        totalStocks: products.reduce((sum, product) => sum + Number(product.stockQuantity || 0), 0),
+      };
+    })
+    .filter((trader) => (trader.products || []).length > 0);
+}
 
 const selectedCartItems = computed(() => {
   const selectedSet = new Set(selectedCartItemIds.value);
@@ -365,7 +398,7 @@ async function loadMarketplace() {
   loadingMarketplace.value = true;
   try {
     const data = await fetchMarketplaceTraders();
-    marketplace.value = data.traders || [];
+    marketplace.value = sanitizeTraderRows(data.traders || []);
   } catch (error) {
     feedback.value = error.message;
   } finally {

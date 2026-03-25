@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { addCartItem, fetchMarketplaceTraders } from '../../services/api';
 import { toMediaUrl } from '../../services/media';
+import { getUser } from '../../services/session';
 
 const route = useRoute();
 const router = useRouter();
@@ -17,21 +18,59 @@ const selectedQuantity = ref(1);
 const modalSubmitting = ref(false);
 const imagePreviewUrl = ref('');
 
+const currentUserId = computed(() => Number(getUser()?.id || 0));
+
+function isCurrentTraderId(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 && parsed === currentUserId.value;
+}
+
+function sanitizeTraderRows(rows) {
+  return (rows || [])
+    .filter((trader) => !isCurrentTraderId(trader?.traderId))
+    .map((trader) => {
+      const products = (trader.products || []).filter((product) => {
+        const ownerId = Number(
+          product?.traderId
+          || product?.userId
+          || product?.ownerId
+          || product?.sellerId
+          || trader?.traderId
+          || 0
+        );
+
+        return !isCurrentTraderId(ownerId);
+      });
+
+      return {
+        ...trader,
+        products,
+      };
+    })
+    .filter((trader) => (trader.products || []).length > 0);
+}
+
 function toImageUrl(path) {
   if (!path) return '';
   return toMediaUrl(path);
 }
 
 function messageTrader(trader) {
-  const rawNumber = String(trader.contactNumber || '').replace(/\D/g, '');
-  if (!rawNumber) {
-    feedback.value = 'This trader has no contact number yet.';
+  const traderId = Number(trader?.traderId || 0);
+  if (!Number.isInteger(traderId) || traderId <= 0) {
+    feedback.value = 'Invalid trader selected.';
     return;
   }
 
-  const international = rawNumber.startsWith('0') ? `63${rawNumber.slice(1)}` : rawNumber;
-  const message = encodeURIComponent(`Hello ${trader.name || 'Trader'}, I want to ask about your products.`);
-  window.open(`https://wa.me/${international}?text=${message}`, '_blank', 'noopener,noreferrer');
+  if (isCurrentTraderId(traderId)) {
+    feedback.value = 'You cannot message your own account.';
+    return;
+  }
+
+  router.push({
+    name: 'trader-messages',
+    query: { traderId: String(traderId) },
+  });
 }
 
 function openProductModal(product, trader) {
@@ -153,7 +192,7 @@ async function loadMarketplace() {
   loading.value = true;
   try {
     const data = await fetchMarketplaceTraders();
-    traders.value = data.traders || [];
+    traders.value = sanitizeTraderRows(data.traders || []);
   } catch (error) {
     feedback.value = error.message;
   } finally {
