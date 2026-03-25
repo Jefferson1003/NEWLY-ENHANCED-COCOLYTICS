@@ -176,6 +176,10 @@ export function fetchMyOrders() {
   return request('/api/trader/orders');
 }
 
+export function fetchTraderSalesOrders() {
+  return request('/api/trader/orders/sales');
+}
+
 export function fetchTraderMessageContacts() {
   return request('/api/trader/messages/contacts');
 }

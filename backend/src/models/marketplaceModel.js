@@ -344,3 +344,41 @@ export async function listOrdersByBuyerId(buyerId) {
 
   return rows;
 }
+
+export async function listSalesOrderItemsByTraderId(traderId) {
+  const [rows] = await pool.execute(
+    `
+      SELECT
+        o.id AS order_id,
+        o.status,
+        o.customer_full_name,
+        o.customer_contact_number,
+        o.delivery_region,
+        o.delivery_province,
+        o.delivery_city,
+        o.delivery_barangay,
+        o.delivery_street_address,
+        o.delivery_full_address,
+        o.payment_method,
+        o.delivery_notes,
+        o.created_at AS order_created_at,
+        oi.id AS order_item_id,
+        oi.product_id,
+        oi.product_name,
+        oi.size,
+        oi.length_cm,
+        oi.quantity,
+        oi.product_image_path,
+        oi.trader_id,
+        COALESCE(NULLIF(buyer.profile_name, ''), buyer.full_name) AS buyer_name
+      FROM order_items oi
+      INNER JOIN orders o ON o.id = oi.order_id
+      INNER JOIN users buyer ON buyer.id = o.buyer_id
+      WHERE oi.trader_id = ?
+      ORDER BY o.created_at DESC, oi.id ASC
+    `,
+    [traderId]
+  );
+
+  return rows;
+}

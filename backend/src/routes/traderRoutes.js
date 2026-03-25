@@ -11,6 +11,7 @@ import {
   listPublicMarketplaceTraders,
   listMessagesWithTrader,
   listOrders,
+  listSalesOrders,
   listMyProducts,
   placeOrder,
   removeCartItem,
@@ -56,6 +57,7 @@ traderRouter.delete('/cart/:id', removeCartItem);
 traderRouter.patch('/cart/:id/quantity', updateCartItemQuantity);
 traderRouter.post('/orders/place', placeOrder);
 traderRouter.get('/orders', listOrders);
+traderRouter.get('/orders/sales', listSalesOrders);
 traderRouter.get('/paper-uploads', listMyPaperUploads);
 traderRouter.post('/paper-uploads', (req, res, next) => {
   uploadPaperFile(req, res, (error) => {

@@ -25,6 +25,7 @@ import {
   findProductById,
   listCartByBuyerId,
   listOrdersByBuyerId,
+  listSalesOrderItemsByTraderId,
   placeOrderFromCart,
   removeCartItemById,
   updateCartItemQuantityById,
@@ -599,6 +600,51 @@ export async function listOrders(req, res) {
     return res.status(200).json({ orders: Array.from(ordersMap.values()) });
   } catch {
     return res.status(500).json({ error: 'Could not fetch orders.' });
+  }
+}
+
+export async function listSalesOrders(req, res) {
+  try {
+    const rows = await listSalesOrderItemsByTraderId(req.auth.id);
+    const ordersMap = new Map();
+
+    for (const row of rows) {
+      if (!ordersMap.has(row.order_id)) {
+        ordersMap.set(row.order_id, {
+          id: row.order_id,
+          status: row.status,
+          buyerName: row.buyer_name || '',
+          customerFullName: row.customer_full_name || '',
+          customerContactNumber: row.customer_contact_number || '',
+          deliveryRegion: row.delivery_region || '',
+          deliveryProvince: row.delivery_province || '',
+          deliveryCity: row.delivery_city || '',
+          deliveryBarangay: row.delivery_barangay || '',
+          deliveryStreetAddress: row.delivery_street_address || '',
+          deliveryFullAddress: row.delivery_full_address || '',
+          paymentMethod: row.payment_method || 'cash_on_delivery',
+          deliveryNotes: row.delivery_notes || '',
+          createdAt: row.order_created_at,
+          items: [],
+        });
+      }
+
+      const order = ordersMap.get(row.order_id);
+      order.items.push({
+        id: row.order_item_id,
+        productId: row.product_id,
+        productName: row.product_name,
+        size: row.size,
+        lengthCm: row.length_cm,
+        quantity: row.quantity,
+        productImagePath: row.product_image_path,
+        traderId: row.trader_id,
+      });
+    }
+
+    return res.status(200).json({ orders: Array.from(ordersMap.values()) });
+  } catch {
+    return res.status(500).json({ error: 'Could not fetch sales orders.' });
   }
 }
 
