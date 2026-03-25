@@ -4,7 +4,6 @@ import { useRouter } from 'vue-router';
 import ConfirmationModal from '../../components/ConfirmationModal.vue';
 import TraderSidebar from '../../components/TraderSidebar.vue';
 import { fetchMe, fetchTraderMessageContacts, fetchTraderProducts } from '../../services/api';
-import { getInstallState, requestInstall } from '../../services/install';
 import { clearSession, getUser, SESSION_UPDATED_EVENT } from '../../services/session';
 
 const router = useRouter();
@@ -14,14 +13,9 @@ const sidebarOpen = ref(false);
 const showLogoutConfirm = ref(false);
 const lowStockCount = ref(0);
 const unreadMessagesCount = ref(0);
-const { installReady, isInstalled } = getInstallState();
 
 const INVENTORY_UPDATED_EVENT = 'cocolytics-inventory-updated';
 const MESSAGE_UPDATED_EVENT = 'cocolytics-messages-updated';
-
-function handleAppInstalled() {
-  feedback.value = 'Cocolytics is installed. You can launch it from your home screen.';
-}
 
 function syncProfileFromSession() {
   const user = getUser();
@@ -91,25 +85,18 @@ function closeSidebar() {
   sidebarOpen.value = false;
 }
 
-async function installApp() {
-  const result = await requestInstall();
-  feedback.value = result.message;
-}
-
 onMounted(() => {
   syncProfileFromSession();
   loadProfile();
   loadLowStockCount();
   loadUnreadMessagesCount();
 
-  window.addEventListener('appinstalled', handleAppInstalled);
   window.addEventListener(SESSION_UPDATED_EVENT, syncProfileFromSession);
   window.addEventListener(INVENTORY_UPDATED_EVENT, loadLowStockCount);
   window.addEventListener(MESSAGE_UPDATED_EVENT, loadUnreadMessagesCount);
 });
 
 onUnmounted(() => {
-  window.removeEventListener('appinstalled', handleAppInstalled);
   window.removeEventListener(SESSION_UPDATED_EVENT, syncProfileFromSession);
   window.removeEventListener(INVENTORY_UPDATED_EVENT, loadLowStockCount);
   window.removeEventListener(MESSAGE_UPDATED_EVENT, loadUnreadMessagesCount);
@@ -139,16 +126,6 @@ onUnmounted(() => {
       <span></span>
       <span></span>
       <span></span>
-    </button>
-
-    <button
-      v-if="!isInstalled"
-      type="button"
-      class="install-btn"
-      :disabled="false"
-      @click="installApp"
-    >
-      {{ installReady ? 'Install App' : 'Install' }}
     </button>
 
     <div v-if="sidebarOpen" class="overlay" @click="closeSidebar"></div>
@@ -209,26 +186,6 @@ onUnmounted(() => {
   height: 2px;
   border-radius: 999px;
   background: #e7fff4;
-}
-
-.install-btn {
-  position: fixed;
-  top: 0.85rem;
-  right: 0.85rem;
-  z-index: 35;
-  border: 1px solid rgba(131, 236, 200, 0.46);
-  border-radius: 8px;
-  background: rgba(15, 89, 70, 0.95);
-  color: #e7fff4;
-  height: 34px;
-  padding: 0.3rem 0.65rem;
-  font-size: 0.76rem;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.install-btn:hover {
-  background: rgba(17, 104, 81, 0.98);
 }
 
 .feedback {
