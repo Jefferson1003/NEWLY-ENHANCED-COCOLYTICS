@@ -5,6 +5,7 @@ import {
   cancelMyOrder,
   getPublicMarketplaceTraderDetail,
   getTraderProfile,
+  heartbeatMessagePresence,
   listCart,
   listMarketplace,
   listMyPaperUploads,
@@ -19,6 +20,7 @@ import {
   placeOrder,
   removeCartItem,
   sendMessageToTrader,
+  sendCallSignalToTrader,
   streamMessageEvents,
   updateProduct,
   updateCartItemQuantity,
@@ -52,8 +54,10 @@ traderRouter.get('/products', listMyProducts);
 traderRouter.get('/marketplace/traders', listMarketplace);
 traderRouter.get('/messages/contacts', listMessageContacts);
 traderRouter.get('/messages/stream', streamMessageEvents);
+traderRouter.post('/messages/presence/heartbeat', heartbeatMessagePresence);
 traderRouter.get('/messages/:traderId', listMessagesWithTrader);
 traderRouter.post('/messages/:traderId', sendMessageToTrader);
+traderRouter.post('/messages/:traderId/call-signal', sendCallSignalToTrader);
 traderRouter.get('/cart', listCart);
 traderRouter.post('/cart', addItemToCart);
 traderRouter.delete('/cart/:id', removeCartItem);

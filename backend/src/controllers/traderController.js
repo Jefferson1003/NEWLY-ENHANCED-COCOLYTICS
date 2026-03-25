@@ -4,9 +4,17 @@ import { fileURLToPath } from 'node:url';
 import multer from 'multer';
 import {
   createMessageBetweenTraders,
+  listConversationPartnerIds,
   listMessagesBetweenTraders,
   listTraderMessageContacts,
 } from '../models/chatModel.js';
+import {
+  createOutgoingCallLog,
+  listCallLogsBetweenTraders,
+  markCallAccepted,
+  markCallDeclined,
+  markCallEnded,
+} from '../models/callModel.js';
 import {
   createPaperUpload,
   findPaperUploadsByTraderId,
@@ -14,6 +22,7 @@ import {
 } from '../models/paperUploadModel.js';
 import {
   addTraderStreamClient,
+  isTraderOnline,
   pushTraderEvent,
   removeTraderStreamClient,
 } from '../realtime/messageStream.js';
@@ -44,6 +53,7 @@ import {
 import {
   findUserById,
   sanitizeUser,
+  updateUserLastSeenById,
   updateTraderProfileById,
   updateTraderProfileImageById,
 } from '../models/userModel.js';
@@ -53,6 +63,7 @@ const __dirname = path.dirname(__filename);
 const uploadsDir = path.resolve(__dirname, '../../../frontend/public/uploads/products_img');
 const profileUploadsDir = path.resolve(__dirname, '../../../frontend/public/uploads/profile_img');
 const paperUploadsDir = path.resolve(__dirname, '../../../frontend/public/uploads/paper_docs');
+const PRESENCE_RECENT_WINDOW_MS = 90 * 1000;
 
 const storage = multer.diskStorage({
   destination: async (_req, _file, cb) => {
@@ -816,6 +827,7 @@ export async function uploadTraderPaper(req, res) {
 
 export async function listMessageContacts(req, res) {
   try {
+    await updateUserLastSeenById(req.auth.id);
     const rows = await listTraderMessageContacts(req.auth.id);
     return res.status(200).json({
       contacts: rows.map((row) => ({
@@ -827,10 +839,27 @@ export async function listMessageContacts(req, res) {
         lastSenderId: row.last_sender_id || null,
         lastMessageAt: row.last_message_at || null,
         unreadCount: Number(row.unread_count || 0),
+        isOnline: Boolean(
+          isTraderOnline(row.trader_id)
+          || (row.last_seen_at && (Date.now() - new Date(row.last_seen_at).getTime()) <= PRESENCE_RECENT_WINDOW_MS)
+        ),
+        lastSeenAt: row.last_seen_at || null,
       })),
     });
   } catch {
     return res.status(200).json({ contacts: [] });
+  }
+}
+
+async function broadcastPresenceUpdate(changedTraderId) {
+  const partnerIds = await listConversationPartnerIds(changedTraderId);
+  const uniquePartnerIds = Array.from(new Set(partnerIds));
+
+  for (const partnerId of uniquePartnerIds) {
+    pushTraderEvent(partnerId, 'chat-presence', {
+      type: 'presence:update',
+      traderId: Number(changedTraderId),
+    });
   }
 }
 
@@ -840,17 +869,24 @@ export function streamMessageEvents(req, res) {
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders?.();
 
-  addTraderStreamClient(req.auth.id, res);
+  const currentTraderId = Number(req.auth.id);
+  addTraderStreamClient(currentTraderId, res);
+
+  updateUserLastSeenById(currentTraderId);
+  broadcastPresenceUpdate(currentTraderId).catch(() => {});
 
   // Keep the connection alive for proxies that close idle streams.
   const keepAliveTimer = setInterval(() => {
+    updateUserLastSeenById(currentTraderId).catch(() => {});
     res.write('event: heartbeat\n');
     res.write(`data: ${JSON.stringify({ ts: Date.now() })}\n\n`);
   }, 25000);
 
   req.on('close', () => {
     clearInterval(keepAliveTimer);
-    removeTraderStreamClient(req.auth.id, res);
+    removeTraderStreamClient(currentTraderId, res);
+    updateUserLastSeenById(currentTraderId).catch(() => {});
+    broadcastPresenceUpdate(currentTraderId).catch(() => {});
   });
 }
 
@@ -865,6 +901,7 @@ export async function listMessagesWithTrader(req, res) {
   }
 
   try {
+    await updateUserLastSeenById(req.auth.id);
     const otherTrader = await findUserById(otherTraderId);
     if (!otherTrader) {
       return res.status(200).json({
@@ -874,6 +911,7 @@ export async function listMessagesWithTrader(req, res) {
     }
 
     const rows = await listMessagesBetweenTraders(req.auth.id, otherTraderId);
+    const callLogs = await listCallLogsBetweenTraders(req.auth.id, otherTraderId);
     console.info('[chat] listMessagesWithTrader', {
       currentTraderId: req.auth.id,
       otherTraderId,
@@ -887,7 +925,23 @@ export async function listMessagesWithTrader(req, res) {
         senderId: row.sender_id,
         receiverId: row.receiver_id,
         messageText: row.message_text,
+        replyToMessageId: row.reply_to_message_id || null,
+        replyToMessageText: row.reply_to_message_text || '',
+        replyToSenderId: row.reply_to_sender_id || null,
         isRead: Boolean(row.is_read),
+        createdAt: row.created_at,
+      })),
+      callLogs: callLogs.map((row) => ({
+        id: row.id,
+        conversationId: row.conversation_id,
+        callerId: row.caller_id,
+        calleeId: row.callee_id,
+        callMode: row.call_mode,
+        status: row.status,
+        startedAt: row.started_at,
+        answeredAt: row.answered_at,
+        endedAt: row.ended_at,
+        durationSeconds: Number(row.duration_seconds || 0),
         createdAt: row.created_at,
       })),
     });
@@ -904,6 +958,10 @@ export async function listMessagesWithTrader(req, res) {
 export async function sendMessageToTrader(req, res) {
   const otherTraderId = Number(req.params.traderId);
   const messageText = String(req.body?.messageText || '').trim();
+  const replyToMessageId = Number(req.body?.replyToMessageId);
+  const safeReplyToMessageId = Number.isInteger(replyToMessageId) && replyToMessageId > 0
+    ? replyToMessageId
+    : null;
 
   if (!Number.isInteger(otherTraderId) || otherTraderId <= 0) {
     return res.status(400).json({ error: 'Invalid trader ID.' });
@@ -922,18 +980,22 @@ export async function sendMessageToTrader(req, res) {
   }
 
   try {
+    await updateUserLastSeenById(req.auth.id);
     const otherTrader = await findUserById(otherTraderId);
     if (!otherTrader || otherTrader.role !== 'trader') {
       return res.status(404).json({ error: 'Trader not found.' });
     }
 
-    const row = await createMessageBetweenTraders(req.auth.id, otherTraderId, messageText);
+    const row = await createMessageBetweenTraders(req.auth.id, otherTraderId, messageText, safeReplyToMessageId);
     const messagePayload = {
       id: row.id,
       conversationId: row.conversation_id,
       senderId: row.sender_id,
       receiverId: row.receiver_id,
       messageText: row.message_text,
+      replyToMessageId: row.reply_to_message_id || null,
+      replyToMessageText: row.reply_to_message_text || '',
+      replyToSenderId: row.reply_to_sender_id || null,
       isRead: Boolean(row.is_read),
       createdAt: row.created_at,
     };
@@ -953,7 +1015,84 @@ export async function sendMessageToTrader(req, res) {
     return res.status(201).json({
       message: messagePayload,
     });
-  } catch {
+  } catch (error) {
+    if (error.message === 'replyToMessageId is invalid for this conversation.') {
+      return res.status(400).json({ error: error.message });
+    }
+
     return res.status(500).json({ error: 'Could not send message.' });
+  }
+}
+
+export async function heartbeatMessagePresence(req, res) {
+  try {
+    await updateUserLastSeenById(req.auth.id);
+    return res.status(200).json({ ok: true, ts: new Date().toISOString() });
+  } catch {
+    return res.status(500).json({ error: 'Could not update presence.' });
+  }
+}
+
+export async function sendCallSignalToTrader(req, res) {
+  const otherTraderId = Number(req.params.traderId);
+  const signalType = String(req.body?.signalType || '').trim().toLowerCase();
+  const payload = req.body?.payload && typeof req.body.payload === 'object' ? req.body.payload : {};
+  const callMode = String(payload?.mode || 'audio').toLowerCase() === 'video' ? 'video' : 'audio';
+  const requestedCallId = Number(payload?.callId);
+  const callId = Number.isInteger(requestedCallId) && requestedCallId > 0 ? requestedCallId : null;
+  const allowedSignalTypes = new Set(['call:invite', 'call:accept', 'call:decline', 'call:offer', 'call:answer', 'call:ice', 'call:end']);
+
+  if (!Number.isInteger(otherTraderId) || otherTraderId <= 0) {
+    return res.status(400).json({ error: 'Invalid trader ID.' });
+  }
+
+  if (otherTraderId === req.auth.id) {
+    return res.status(400).json({ error: 'You cannot call yourself.' });
+  }
+
+  if (!allowedSignalTypes.has(signalType)) {
+    return res.status(400).json({ error: 'Invalid call signal type.' });
+  }
+
+  try {
+    await updateUserLastSeenById(req.auth.id);
+    const otherTrader = await findUserById(otherTraderId);
+    if (!otherTrader || otherTrader.role !== 'trader') {
+      return res.status(404).json({ error: 'Trader not found.' });
+    }
+
+    let resolvedCallId = callId;
+    if (signalType === 'call:invite') {
+      resolvedCallId = await createOutgoingCallLog(req.auth.id, otherTraderId, callMode);
+    } else if (signalType === 'call:accept' && resolvedCallId) {
+      await markCallAccepted(resolvedCallId);
+    } else if (signalType === 'call:decline' && resolvedCallId) {
+      await markCallDeclined(resolvedCallId);
+    } else if (signalType === 'call:end' && resolvedCallId) {
+      await markCallEnded(resolvedCallId);
+    }
+
+    const eventPayload = {
+      type: 'call:signal',
+      signalType,
+      fromTraderId: req.auth.id,
+      toTraderId: otherTraderId,
+      payload: {
+        ...payload,
+        mode: callMode,
+        callId: resolvedCallId,
+      },
+      createdAt: new Date().toISOString(),
+    };
+
+    pushTraderEvent(otherTraderId, 'chat-call', eventPayload);
+    pushTraderEvent(req.auth.id, 'chat-call', eventPayload);
+
+    return res.status(200).json({
+      ok: true,
+      callId: resolvedCallId,
+    });
+  } catch {
+    return res.status(500).json({ error: 'Could not send call signal.' });
   }
 }

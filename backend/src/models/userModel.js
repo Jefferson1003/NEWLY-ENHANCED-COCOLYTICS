@@ -54,6 +54,7 @@ export async function findUserById(id) {
         business_address,
         staff_reason,
         profile_image_path,
+        last_seen_at,
         created_at
       FROM users
       WHERE id = ?
@@ -63,6 +64,19 @@ export async function findUserById(id) {
   );
 
   return rows[0] || null;
+}
+
+export async function updateUserLastSeenById(id, seenAt = new Date()) {
+  const [result] = await pool.execute(
+    `
+      UPDATE users
+      SET last_seen_at = ?
+      WHERE id = ?
+    `,
+    [seenAt, id]
+  );
+
+  return result.affectedRows;
 }
 
 export async function findAllNonAdminUsers() {
@@ -182,6 +196,7 @@ export function sanitizeUser(user) {
     businessAddress: user.business_address || '',
     staffReason: user.staff_reason || '',
     profileImagePath: user.profile_image_path || '',
+    lastSeenAt: user.last_seen_at || null,
     createdAt: user.created_at,
   };
 }

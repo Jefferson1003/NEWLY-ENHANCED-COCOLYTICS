@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import {
   fetchMessagesWithTrader,
   fetchTraderMessageContacts,
+  heartbeatTraderMessagePresence,
   getTraderMessageStreamUrl,
   sendMessageToTrader,
 } from '../../services/api';
@@ -15,6 +16,7 @@ const router = useRouter();
 
 const contacts = ref([]);
 const messages = ref([]);
+const callLogs = ref([]);
 const selectedTraderId = ref(null);
 const loadingContacts = ref(false);
 const loadingMessages = ref(false);
@@ -27,6 +29,23 @@ const messageListRef = ref(null);
 const MESSAGE_UPDATED_EVENT = 'cocolytics-messages-updated';
 const threadOpened = ref(false);
 const pendingTraderName = ref('');
+const replyToMessage = ref(null);
+const nowTick = ref(Date.now());
+
+let presenceTimer = null;
+let nowTicker = null;
+const SWIPE_REPLY_TRIGGER_PX = 56;
+const SWIPE_REPLY_MAX_PX = 72;
+
+const swipeState = ref({
+  active: false,
+  dragging: false,
+  pointerId: null,
+  messageId: null,
+  startX: 0,
+  startY: 0,
+  currentX: 0,
+});
 
 const currentUserId = computed(() => Number(getUser()?.id || 0));
 
@@ -51,9 +70,32 @@ const totalUnreadCount = computed(() => contacts.value.reduce(
   0
 ));
 
+const conversationItems = computed(() => {
+  const messageItems = messages.value.map((message) => ({
+    type: 'message',
+    id: `message-${message.id}`,
+    sortAt: new Date(message.createdAt).getTime() || 0,
+    message,
+  }));
+
+  const callItems = callLogs.value.map((call) => ({
+    type: 'call',
+    id: `call-${call.id}`,
+    sortAt: new Date(call.startedAt || call.createdAt).getTime() || 0,
+    call,
+  }));
+
+  return [...messageItems, ...callItems].sort((a, b) => a.sortAt - b.sortAt);
+});
+
 function toImageUrl(path) {
   if (!path) return '';
   return toMediaUrl(path);
+}
+
+function selectedContactAvatarUrl() {
+  const imagePath = selectedContact.value?.profileImagePath || '';
+  return imagePath ? toImageUrl(imagePath) : '';
 }
 
 function emitMessagesUpdated() {
@@ -61,7 +103,12 @@ function emitMessagesUpdated() {
 }
 
 function formatDate(value) {
-  return new Date(value).toLocaleString();
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return date.toLocaleString();
 }
 
 function normalizeMessageRow(row) {
@@ -71,13 +118,128 @@ function normalizeMessageRow(row) {
     senderId: Number(row?.senderId ?? row?.sender_id ?? 0),
     receiverId: Number(row?.receiverId ?? row?.receiver_id ?? 0),
     messageText: String(row?.messageText ?? row?.message_text ?? '').trim(),
+    replyToMessageId: Number(row?.replyToMessageId ?? row?.reply_to_message_id ?? 0) || null,
+    replyToMessageText: String(row?.replyToMessageText ?? row?.reply_to_message_text ?? '').trim(),
+    replyToSenderId: Number(row?.replyToSenderId ?? row?.reply_to_sender_id ?? 0) || null,
     isRead: Boolean(Number(row?.isRead ?? row?.is_read ?? 0)),
     createdAt: row?.createdAt ?? row?.created_at ?? new Date().toISOString(),
   };
 }
 
+function normalizeCallLogRow(row) {
+  return {
+    id: Number(row?.id || 0),
+    callerId: Number(row?.callerId ?? row?.caller_id ?? 0),
+    calleeId: Number(row?.calleeId ?? row?.callee_id ?? 0),
+    callMode: String(row?.callMode ?? row?.call_mode ?? 'audio').toLowerCase() === 'video' ? 'video' : 'audio',
+    status: String(row?.status || '').toLowerCase(),
+    startedAt: row?.startedAt ?? row?.started_at ?? row?.createdAt ?? new Date().toISOString(),
+    endedAt: row?.endedAt ?? row?.ended_at ?? null,
+    durationSeconds: Math.max(0, Number(row?.durationSeconds ?? row?.duration_seconds ?? 0) || 0),
+    createdAt: row?.createdAt ?? row?.created_at ?? row?.startedAt ?? new Date().toISOString(),
+  };
+}
+
+function formatCallDuration(totalSeconds) {
+  const seconds = Math.max(0, Number(totalSeconds || 0));
+  const minutes = Math.floor(seconds / 60);
+  const remaining = seconds % 60;
+
+  if (!minutes) {
+    return `${remaining}s`;
+  }
+
+  return `${minutes}m ${remaining}s`;
+}
+
+function callSummaryText(call) {
+  const mine = Number(call.callerId) === currentUserId.value;
+  const modeLabel = call.callMode === 'video' ? 'video call' : 'voice call';
+  const status = String(call.status || '').toLowerCase();
+
+  if (status === 'missed') {
+    return mine ? `Missed outgoing ${modeLabel}` : `Missed ${modeLabel}`;
+  }
+
+  if (status === 'declined') {
+    return mine ? `${modeLabel} declined` : `You declined ${modeLabel}`;
+  }
+
+  if (status === 'completed') {
+    return `${mine ? 'Outgoing' : 'Incoming'} ${modeLabel} • ${formatCallDuration(call.durationSeconds)}`;
+  }
+
+  if (status === 'ringing') {
+    return `${mine ? 'Outgoing' : 'Incoming'} ${modeLabel} • ringing`;
+  }
+
+  return `${mine ? 'Outgoing' : 'Incoming'} ${modeLabel}`;
+}
+
+function toRelativeTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'recently';
+  }
+
+  const diffMs = Math.max(0, nowTick.value - date.getTime());
+  const diffMinutes = Math.floor(diffMs / 60000);
+  if (diffMinutes <= 0) {
+    return 'just now';
+  }
+
+  if (diffMinutes < 60) {
+    return `${diffMinutes} min${diffMinutes === 1 ? '' : 's'} ago`;
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours} hr${diffHours === 1 ? '' : 's'} ago`;
+  }
+
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+}
+
+function contactStatusLabel(contact) {
+  if (contact?.isOnline) {
+    return 'Active now';
+  }
+
+  const fallbackLastActiveAt = contact?.lastSeenAt || contact?.lastMessageAt || null;
+  if (fallbackLastActiveAt) {
+    return `Active ${toRelativeTime(fallbackLastActiveAt)}`;
+  }
+
+  return 'Active recently';
+}
+
+function threadStatusLabel() {
+  if (!selectedContact.value) {
+    return '';
+  }
+
+  return contactStatusLabel(selectedContact.value);
+}
+
+function isMessageMine(message) {
+  return Number(message.senderId) === currentUserId.value;
+}
+
+function replyToName(message) {
+  if (!message?.replyToSenderId) {
+    return 'Message';
+  }
+
+  if (Number(message.replyToSenderId) === currentUserId.value) {
+    return 'You';
+  }
+
+  return selectedContact.value?.traderName || pendingTraderName.value || 'Trader';
+}
+
 function messageDeliveryLabel(message) {
-  if (Number(message.senderId) !== currentUserId.value) {
+  if (!isMessageMine(message)) {
     return '';
   }
 
@@ -135,6 +297,31 @@ function handleLiveMessageEvent(rawEvent) {
   emitMessagesUpdated();
 }
 
+function handleLivePresenceEvent(rawEvent) {
+  const payload = JSON.parse(rawEvent?.data || '{}');
+  if (payload?.type !== 'presence:update') {
+    return;
+  }
+
+  loadContacts();
+}
+
+function openCallPage(mode = 'audio') {
+  const partnerId = Number(selectedTraderId.value);
+  if (!Number.isInteger(partnerId) || partnerId <= 0) {
+    feedback.value = 'Please select a trader first.';
+    return;
+  }
+
+  router.push({
+    name: 'trader-call',
+    query: {
+      traderId: String(partnerId),
+      mode: mode === 'video' ? 'video' : 'audio',
+    },
+  });
+}
+
 function openMessageStream() {
   closeMessageStream();
 
@@ -149,6 +336,13 @@ function openMessageStream() {
       handleLiveMessageEvent(event);
     } catch (error) {
       console.error('[messages] failed to parse live event', error);
+    }
+  });
+  stream.addEventListener('chat-presence', (event) => {
+    try {
+      handleLivePresenceEvent(event);
+    } catch (error) {
+      console.error('[messages] failed to parse presence event', error);
     }
   });
   messageStream.value = stream;
@@ -176,6 +370,177 @@ async function selectContact(traderId) {
 
 function backToChats() {
   threadOpened.value = false;
+}
+
+function selectReplyMessage(message) {
+  replyToMessage.value = {
+    id: message.id,
+    messageText: message.messageText,
+    senderId: message.senderId,
+  };
+}
+
+function clearReplyMessage() {
+  replyToMessage.value = null;
+}
+
+function replyPreviewName() {
+  if (!replyToMessage.value) {
+    return '';
+  }
+
+  return Number(replyToMessage.value.senderId) === currentUserId.value
+    ? 'You'
+    : selectedContact.value?.traderName || pendingTraderName.value || 'Trader';
+}
+
+function resetSwipeState() {
+  swipeState.value = {
+    active: false,
+    dragging: false,
+    pointerId: null,
+    messageId: null,
+    startX: 0,
+    startY: 0,
+    currentX: 0,
+  };
+}
+
+function onMessagePointerDown(message, event) {
+  if (!message?.id) {
+    return;
+  }
+
+  if (event.pointerType === 'mouse' && event.button !== 0) {
+    return;
+  }
+
+  swipeState.value = {
+    active: true,
+    dragging: false,
+    pointerId: event.pointerId,
+    messageId: Number(message.id),
+    startX: Number(event.clientX || 0),
+    startY: Number(event.clientY || 0),
+    currentX: 0,
+  };
+
+  event.currentTarget?.setPointerCapture?.(event.pointerId);
+}
+
+function onMessagePointerMove(message, event) {
+  if (!swipeState.value.active) {
+    return;
+  }
+
+  if (swipeState.value.pointerId !== event.pointerId) {
+    return;
+  }
+
+  if (Number(message?.id) !== Number(swipeState.value.messageId)) {
+    return;
+  }
+
+  const deltaX = Number(event.clientX || 0) - swipeState.value.startX;
+  const deltaY = Number(event.clientY || 0) - swipeState.value.startY;
+  const absX = Math.abs(deltaX);
+  const absY = Math.abs(deltaY);
+
+  if (!swipeState.value.dragging) {
+    if (absX < 10) {
+      return;
+    }
+
+    if (absY > absX) {
+      resetSwipeState();
+      return;
+    }
+
+    swipeState.value.dragging = true;
+  }
+
+  event.preventDefault();
+  swipeState.value.currentX = Math.max(-SWIPE_REPLY_MAX_PX, Math.min(SWIPE_REPLY_MAX_PX, deltaX));
+}
+
+function onMessagePointerUp(message, event) {
+  if (!swipeState.value.active) {
+    return;
+  }
+
+  if (swipeState.value.pointerId !== event.pointerId) {
+    return;
+  }
+
+  const messageMatches = Number(message?.id) === Number(swipeState.value.messageId);
+  const shouldReply = messageMatches && Math.abs(swipeState.value.currentX) >= SWIPE_REPLY_TRIGGER_PX;
+
+  if (shouldReply) {
+    selectReplyMessage(message);
+  }
+
+  resetSwipeState();
+}
+
+function onMessagePointerCancel() {
+  resetSwipeState();
+}
+
+function messageSwipeStyle(message) {
+  if (!swipeState.value.active) {
+    return {};
+  }
+
+  if (Number(message?.id) !== Number(swipeState.value.messageId)) {
+    return {};
+  }
+
+  return {
+    transform: `translateX(${swipeState.value.currentX}px)`,
+  };
+}
+
+async function heartbeatPresence() {
+  try {
+    await heartbeatTraderMessagePresence();
+  } catch {
+    // Presence heartbeat intentionally fails silently.
+  }
+}
+
+function startPresenceHeartbeat() {
+  if (presenceTimer) {
+    clearInterval(presenceTimer);
+  }
+
+  heartbeatPresence();
+  presenceTimer = setInterval(() => {
+    heartbeatPresence();
+  }, 20000);
+}
+
+function stopPresenceHeartbeat() {
+  if (presenceTimer) {
+    clearInterval(presenceTimer);
+    presenceTimer = null;
+  }
+}
+
+function startNowTicker() {
+  if (nowTicker) {
+    clearInterval(nowTicker);
+  }
+
+  nowTicker = setInterval(() => {
+    nowTick.value = Date.now();
+  }, 30000);
+}
+
+function stopNowTicker() {
+  if (nowTicker) {
+    clearInterval(nowTicker);
+    nowTicker = null;
+  }
 }
 
 function syncThreadFromRouteQuery() {
@@ -212,6 +577,7 @@ async function loadContacts() {
 async function loadMessages() {
   if (!selectedTraderId.value) {
     messages.value = [];
+    callLogs.value = [];
     return;
   }
 
@@ -229,6 +595,9 @@ async function loadMessages() {
       .map(normalizeMessageRow)
       .filter((row) => row.senderId > 0 && row.receiverId > 0);
     messages.value.sort((a, b) => Number(a.id) - Number(b.id));
+    callLogs.value = (Array.isArray(data?.callLogs) ? data.callLogs : [])
+      .map(normalizeCallLogRow)
+      .filter((row) => row.id > 0 && row.callerId > 0 && row.calleeId > 0);
     feedback.value = '';
     await scrollMessagesToBottomAfterPaint();
   } catch (error) {
@@ -251,11 +620,14 @@ async function sendMessage() {
 
   sending.value = true;
   try {
-    const data = await sendMessageToTrader(selectedTraderId.value, text);
+    const data = await sendMessageToTrader(selectedTraderId.value, text, {
+      replyToMessageId: replyToMessage.value?.id || null,
+    });
     if (data?.message) {
       upsertMessage(data.message);
     }
     messageText.value = '';
+    clearReplyMessage();
     await loadContacts();
     emitMessagesUpdated();
     await scrollMessagesToBottomAfterPaint();
@@ -271,10 +643,14 @@ onMounted(async () => {
   await loadContacts();
   await loadMessages();
   openMessageStream();
+  startPresenceHeartbeat();
+  startNowTicker();
   emitMessagesUpdated();
 });
 
 onUnmounted(() => {
+  stopPresenceHeartbeat();
+  stopNowTicker();
   closeMessageStream();
 });
 
@@ -349,6 +725,10 @@ watch(selectedTraderId, async () => {
 
             <div class="contact-info">
               <p class="contact-name">{{ contact.traderName || 'Trader' }}</p>
+              <p class="contact-presence" :class="{ online: contact.isOnline }">
+                <span class="presence-dot" />
+                {{ contactStatusLabel(contact) }}
+              </p>
               <p class="contact-last">{{ contact.lastMessage || 'No messages yet.' }}</p>
             </div>
 
@@ -373,36 +753,78 @@ watch(selectedTraderId, async () => {
             </div>
             <div>
               <h2>{{ selectedContact.traderName }}</h2>
-              <p class="thread-status">Active</p>
+              <p class="thread-status" :class="{ online: selectedContact.isOnline }">
+                <span class="presence-dot" />
+                {{ threadStatusLabel() }}
+              </p>
             </div>
+          </div>
+          <div v-if="selectedContact" class="thread-actions">
+            <button type="button" class="call-btn icon" @click="openCallPage('audio')" title="Voice call" aria-label="Voice call">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16l2.5 2.5c3-3 8-3 11 0L20 16c-4-4.5-12-4.5-16 0z" /></svg>
+            </button>
+            <button type="button" class="call-btn icon video" @click="openCallPage('video')" title="Video call" aria-label="Video call">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h12l5-3v16l-5-3H3z" /></svg>
+            </button>
           </div>
           <h2 v-else-if="pendingTraderName">{{ pendingTraderName }}</h2>
           <h2 v-else>Select a chat to start messaging</h2>
         </header>
 
         <p v-if="loadingMessages" class="muted">Loading messages...</p>
-        <p v-else-if="threadOpened && !messages.length" class="muted">Start your conversation.</p>
+        <p v-else-if="threadOpened && !conversationItems.length" class="muted">Start your conversation.</p>
 
         <div v-else ref="messageListRef" class="message-list">
           <div
-            v-for="message in messages"
-            :key="message.id"
-            :class="['message-row', { mine: Number(message.senderId) === currentUserId }]"
+            v-for="item in conversationItems"
+            :key="item.id"
+            :class="['message-row', { mine: item.type === 'message' && Number(item.message.senderId) === currentUserId, call: item.type === 'call' }]"
           >
-            <div v-if="Number(message.senderId) !== currentUserId" class="message-avatar">
+            <img
+              v-if="item.type === 'message' && Number(item.message.senderId) !== currentUserId && selectedContactAvatarUrl()"
+              :src="selectedContactAvatarUrl()"
+              :alt="selectedContact?.traderName || 'Trader'"
+              class="message-avatar message-avatar-photo"
+            />
+            <div
+              v-else-if="item.type === 'message' && Number(item.message.senderId) !== currentUserId"
+              class="message-avatar"
+            >
               {{ (selectedContact?.traderName || pendingTraderName || 'T').slice(0, 1).toUpperCase() }}
             </div>
-            <article :class="['message-bubble', { mine: Number(message.senderId) === currentUserId }]">
-              <p>{{ message.messageText }}</p>
-              <span>{{ formatDate(message.createdAt) }}</span>
-              <small v-if="messageDeliveryLabel(message)" class="delivery-label">
-                {{ messageDeliveryLabel(message) }}
+            <article
+              v-if="item.type === 'message'"
+              :class="['message-bubble', { mine: Number(item.message.senderId) === currentUserId, swiping: Number(item.message.id) === Number(swipeState.messageId) && swipeState.dragging }]"
+              :style="messageSwipeStyle(item.message)"
+              @pointerdown="onMessagePointerDown(item.message, $event)"
+              @pointermove="onMessagePointerMove(item.message, $event)"
+              @pointerup="onMessagePointerUp(item.message, $event)"
+              @pointercancel="onMessagePointerCancel"
+            >
+              <div v-if="item.message.replyToMessageId" class="reply-quote">
+                <small>{{ replyToName(item.message) }}</small>
+                <p>{{ item.message.replyToMessageText || 'Original message unavailable.' }}</p>
+              </div>
+              <p>{{ item.message.messageText }}</p>
+              <span>{{ formatDate(item.message.createdAt) }}</span>
+              <small v-if="messageDeliveryLabel(item.message)" class="delivery-label">
+                {{ messageDeliveryLabel(item.message) }}
               </small>
+            </article>
+
+            <article v-else class="call-log-bubble">
+              <p class="call-log-title">{{ callSummaryText(item.call) }}</p>
+              <span>{{ formatDate(item.call.startedAt || item.call.createdAt) }}</span>
             </article>
           </div>
         </div>
 
         <form class="composer" @submit.prevent="sendMessage">
+          <div v-if="replyToMessage" class="reply-preview">
+            <p>Replying to {{ replyPreviewName() }}</p>
+            <small>{{ replyToMessage.messageText }}</small>
+            <button type="button" @click="clearReplyMessage">Cancel</button>
+          </div>
           <input
             v-model="messageText"
             type="text"
@@ -416,6 +838,7 @@ watch(selectedTraderId, async () => {
         </form>
       </section>
     </section>
+
   </section>
 </template>
 
@@ -540,6 +963,31 @@ watch(selectedTraderId, async () => {
   font-weight: 700;
 }
 
+.contact-presence {
+  margin-top: 0.08rem;
+  color: #9aa9c2;
+  font-size: 0.72rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.contact-presence.online {
+  color: #a8ffcf;
+}
+
+.presence-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #7d8799;
+}
+
+.online .presence-dot {
+  background: #3ef378;
+  box-shadow: 0 0 0 2px rgba(62, 243, 120, 0.22);
+}
+
 .contact-last {
   margin-top: 0.12rem;
   color: #acb7ca;
@@ -606,6 +1054,52 @@ watch(selectedTraderId, async () => {
   margin: 0.12rem 0 0;
   color: #9fb1c9;
   font-size: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.thread-status.online {
+  color: #a8ffcf;
+}
+
+.thread-actions {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.call-btn {
+  border: 1px solid rgba(93, 149, 255, 0.55);
+  border-radius: 999px;
+  background: #23415f;
+  color: #f5f9ff;
+  padding: 0.34rem 0.72rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.call-btn.icon {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.call-btn.icon svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+.call-btn.video {
+  background: #2e3e89;
+}
+
+.call-btn.end {
+  background: #632d39;
+  border-color: rgba(255, 119, 142, 0.48);
 }
 
 .message-list {
@@ -630,6 +1124,10 @@ watch(selectedTraderId, async () => {
   justify-content: flex-end;
 }
 
+.message-row.call {
+  justify-content: center;
+}
+
 .message-avatar {
   width: 24px;
   height: 24px;
@@ -642,12 +1140,20 @@ watch(selectedTraderId, async () => {
   place-items: center;
 }
 
+.message-avatar-photo {
+  object-fit: cover;
+  border: 1px solid rgba(131, 236, 200, 0.35);
+  background: #1e2430;
+}
+
 .message-bubble {
   max-width: min(92%, 500px);
   border: 1px solid rgba(89, 101, 124, 0.3);
   border-radius: 16px;
   background: #2c313a;
   padding: 0.5rem 0.62rem;
+  touch-action: pan-y;
+  transition: transform 0.16s ease;
 }
 
 .message-bubble.mine {
@@ -655,9 +1161,52 @@ watch(selectedTraderId, async () => {
   border-color: rgba(122, 151, 255, 0.7);
 }
 
+.call-log-bubble {
+  border: 1px solid rgba(94, 114, 143, 0.38);
+  border-radius: 12px;
+  background: #202734;
+  padding: 0.46rem 0.62rem;
+  min-width: 190px;
+  max-width: min(92%, 360px);
+  text-align: center;
+}
+
+.call-log-title {
+  margin: 0;
+  color: #dbe8ff;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.call-log-bubble span {
+  margin-top: 0.2rem;
+  display: block;
+  color: #adc1de;
+  font-size: 0.68rem;
+}
+
 .message-bubble p {
   margin: 0;
   color: #f4f7ff;
+}
+
+.reply-quote {
+  border-left: 2px solid rgba(181, 201, 255, 0.62);
+  background: rgba(21, 30, 45, 0.5);
+  border-radius: 8px;
+  padding: 0.28rem 0.42rem;
+  margin-bottom: 0.3rem;
+}
+
+.reply-quote small {
+  color: #c7d8ff;
+  font-weight: 700;
+}
+
+.reply-quote p {
+  margin: 0.12rem 0 0;
+  font-size: 0.76rem;
+  color: #d8e3f7;
 }
 
 .message-bubble span {
@@ -677,11 +1226,51 @@ watch(selectedTraderId, async () => {
   font-weight: 700;
 }
 
+.message-bubble.swiping {
+  transition: none;
+}
+
 .composer {
   margin-top: 0.45rem;
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 0.45rem;
+}
+
+.reply-preview {
+  grid-column: 1 / -1;
+  border: 1px solid rgba(98, 114, 142, 0.4);
+  border-radius: 10px;
+  background: #202734;
+  padding: 0.42rem 0.55rem;
+}
+
+.reply-preview p,
+.reply-preview small {
+  margin: 0;
+  display: block;
+}
+
+.reply-preview p {
+  color: #dce7ff;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.reply-preview small {
+  margin-top: 0.16rem;
+  color: #b9c8e3;
+  font-size: 0.72rem;
+}
+
+.reply-preview button {
+  margin-top: 0.24rem;
+  border: 0;
+  background: transparent;
+  color: #90adff;
+  padding: 0;
+  font-size: 0.72rem;
+  cursor: pointer;
 }
 
 .composer input {
@@ -730,6 +1319,10 @@ watch(selectedTraderId, async () => {
 
   .message-list {
     max-height: 46vh;
+  }
+
+  .thread-actions {
+    flex-wrap: wrap;
   }
 }
 </style>

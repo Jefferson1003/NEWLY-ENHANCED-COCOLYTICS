@@ -61,6 +61,7 @@ export async function listTraderMessageContacts(traderId) {
         u.id AS trader_id,
         COALESCE(NULLIF(u.profile_name, ''), u.full_name) AS trader_name,
         u.profile_image_path,
+        u.last_seen_at,
         c.id AS conversation_id,
         lm.message_text AS last_message,
         lm.sender_id AS last_sender_id,
@@ -112,16 +113,21 @@ export async function listMessagesBetweenTraders(currentTraderId, otherTraderId,
     const [conversationRows] = await pool.execute(
       `
         SELECT
-          id,
-          conversation_id,
-          sender_id,
-          receiver_id,
-          message_text,
-          is_read,
-          created_at
-        FROM chat_messages
-        WHERE conversation_id = ?
-        ORDER BY id DESC
+          m.id,
+          m.conversation_id,
+          m.sender_id,
+          m.receiver_id,
+          m.message_text,
+          m.reply_to_message_id,
+          m.is_read,
+          m.created_at,
+          rm.message_text AS reply_to_message_text,
+          rm.sender_id AS reply_to_sender_id
+        FROM chat_messages m
+        LEFT JOIN chat_messages rm
+          ON rm.id = m.reply_to_message_id
+        WHERE m.conversation_id = ?
+        ORDER BY m.id DESC
         LIMIT ${safeLimit}
       `,
       [conversationId]
@@ -131,19 +137,24 @@ export async function listMessagesBetweenTraders(currentTraderId, otherTraderId,
     const [pairRows] = await pool.execute(
       `
         SELECT
-          id,
-          conversation_id,
-          sender_id,
-          receiver_id,
-          message_text,
-          is_read,
-          created_at
-        FROM chat_messages
+          m.id,
+          m.conversation_id,
+          m.sender_id,
+          m.receiver_id,
+          m.message_text,
+          m.reply_to_message_id,
+          m.is_read,
+          m.created_at,
+          rm.message_text AS reply_to_message_text,
+          rm.sender_id AS reply_to_sender_id
+        FROM chat_messages m
+        LEFT JOIN chat_messages rm
+          ON rm.id = m.reply_to_message_id
         WHERE
-          (sender_id = ? AND receiver_id = ?)
+          (m.sender_id = ? AND m.receiver_id = ?)
           OR
-          (sender_id = ? AND receiver_id = ?)
-        ORDER BY id DESC
+          (m.sender_id = ? AND m.receiver_id = ?)
+        ORDER BY m.id DESC
         LIMIT ${safeLimit}
       `,
       [currentId, otherId, otherId, currentId]
@@ -174,8 +185,28 @@ export async function listMessagesBetweenTraders(currentTraderId, otherTraderId,
   return rows.reverse();
 }
 
-export async function createMessageBetweenTraders(senderId, receiverId, messageText) {
+export async function createMessageBetweenTraders(senderId, receiverId, messageText, replyToMessageId = null) {
   const conversationId = await getOrCreateConversationId(senderId, receiverId);
+  const normalizedReplyToId = Number(replyToMessageId);
+  const safeReplyToId = Number.isInteger(normalizedReplyToId) && normalizedReplyToId > 0
+    ? normalizedReplyToId
+    : null;
+
+  if (safeReplyToId) {
+    const [replyRows] = await pool.execute(
+      `
+        SELECT id
+        FROM chat_messages
+        WHERE id = ? AND conversation_id = ?
+        LIMIT 1
+      `,
+      [safeReplyToId, conversationId]
+    );
+
+    if (!replyRows.length) {
+      throw new Error('replyToMessageId is invalid for this conversation.');
+    }
+  }
 
   const [result] = await pool.execute(
     `
@@ -183,11 +214,12 @@ export async function createMessageBetweenTraders(senderId, receiverId, messageT
         conversation_id,
         sender_id,
         receiver_id,
-        message_text
+        message_text,
+        reply_to_message_id
       )
-      VALUES (?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?)
     `,
-    [conversationId, senderId, receiverId, String(messageText || '').trim()]
+    [conversationId, senderId, receiverId, String(messageText || '').trim(), safeReplyToId]
   );
 
   await pool.execute(
@@ -202,19 +234,43 @@ export async function createMessageBetweenTraders(senderId, receiverId, messageT
   const [rows] = await pool.execute(
     `
       SELECT
-        id,
-        conversation_id,
-        sender_id,
-        receiver_id,
-        message_text,
-        is_read,
-        created_at
-      FROM chat_messages
-      WHERE id = ?
+        m.id,
+        m.conversation_id,
+        m.sender_id,
+        m.receiver_id,
+        m.message_text,
+        m.reply_to_message_id,
+        m.is_read,
+        m.created_at,
+        rm.message_text AS reply_to_message_text,
+        rm.sender_id AS reply_to_sender_id
+      FROM chat_messages m
+      LEFT JOIN chat_messages rm
+        ON rm.id = m.reply_to_message_id
+      WHERE m.id = ?
       LIMIT 1
     `,
     [result.insertId]
   );
 
   return rows[0] || null;
+}
+
+export async function listConversationPartnerIds(traderId) {
+  const [rows] = await pool.execute(
+    `
+      SELECT trader_two_id AS partner_id
+      FROM chat_conversations
+      WHERE trader_one_id = ?
+      UNION
+      SELECT trader_one_id AS partner_id
+      FROM chat_conversations
+      WHERE trader_two_id = ?
+    `,
+    [traderId, traderId]
+  );
+
+  return rows
+    .map((row) => Number(row.partner_id))
+    .filter((id) => Number.isInteger(id) && id > 0);
 }

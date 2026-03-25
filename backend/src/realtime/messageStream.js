@@ -43,3 +43,9 @@ export function pushTraderEvent(traderId, eventName, payload) {
     writeEvent(client, eventName, payload);
   }
 }
+
+export function isTraderOnline(traderId) {
+  const id = Number(traderId);
+  const clients = traderStreams.get(id);
+  return Boolean(clients && clients.size > 0);
+}

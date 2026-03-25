@@ -266,12 +266,39 @@ export function fetchMessagesWithTrader(traderId) {
   return request(`/api/trader/messages/${traderId}`);
 }
 
-export function sendMessageToTrader(traderId, messageText) {
+export function sendMessageToTrader(traderId, messageText, options = {}) {
+  const replyToMessageId = Number(options.replyToMessageId);
+  const safeReplyToMessageId = Number.isInteger(replyToMessageId) && replyToMessageId > 0
+    ? replyToMessageId
+    : null;
+
   return request(`/api/trader/messages/${traderId}`, {
     method: 'POST',
-    body: JSON.stringify({ messageText }),
+    body: JSON.stringify({
+      messageText,
+      replyToMessageId: safeReplyToMessageId,
+    }),
   }, {
     successMessage: 'Message sent.',
+  });
+}
+
+export function heartbeatTraderMessagePresence() {
+  return request('/api/trader/messages/presence/heartbeat', {
+    method: 'POST',
+  }, {
+    toastError: false,
+    toastSuccess: false,
+  });
+}
+
+export function sendTraderCallSignal(traderId, signalType, payload = {}) {
+  return request(`/api/trader/messages/${traderId}/call-signal`, {
+    method: 'POST',
+    body: JSON.stringify({ signalType, payload }),
+  }, {
+    toastError: false,
+    toastSuccess: false,
   });
 }
 

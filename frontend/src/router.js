@@ -14,6 +14,7 @@ import TraderBrowseProductsPage from './pages/trader/TraderBrowseProductsPage.vu
 import TraderAddressEditorPage from './pages/trader/TraderAddressEditorPage.vue';
 import TraderInventoryPage from './pages/trader/TraderInventoryPage.vue';
 import TraderMessagesPage from './pages/trader/TraderMessagesPage.vue';
+import TraderCallPage from './pages/trader/TraderCallPage.vue';
 import TraderManageOrdersPage from './pages/trader/TraderManageOrdersPage.vue';
 import TraderVisitDetailPage from './pages/trader/TraderVisitDetailPage.vue';
 import TraderDocumentsPage from './pages/trader/TraderDocumentsPage.vue';
@@ -67,6 +68,7 @@ const router = createRouter({
         { path: 'documents', name: 'trader-documents', component: TraderDocumentsPage },
         { path: 'operations', name: 'trader-operations', component: TraderOperationsPage },
         { path: 'messages', name: 'trader-messages', component: TraderMessagesPage },
+        { path: 'call', name: 'trader-call', component: TraderCallPage },
         { path: 'address-editor', name: 'trader-address-editor', component: TraderAddressEditorPage },
         {
           path: 'browse-products',
