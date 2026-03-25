@@ -1,9 +1,20 @@
 import { getToken } from './session';
+import { toastError, toastSuccess } from './toast';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
-async function request(path, options = {}) {
+function resolveDefaultSuccessMessage(method) {
+  if (method === 'POST') return 'Created successfully.';
+  if (method === 'PATCH' || method === 'PUT') return 'Updated successfully.';
+  if (method === 'DELETE') return 'Deleted successfully.';
+  return 'Request completed successfully.';
+}
+
+async function request(path, options = {}, meta = {}) {
   const token = getToken();
+  const method = String(options.method || 'GET').toUpperCase();
+  const shouldToastError = meta.toastError !== false;
+  const shouldToastSuccess = meta.toastSuccess ?? (method !== 'GET');
   const isFormDataBody = options.body instanceof FormData;
   const headers = {
     ...(options.headers || {}),
@@ -24,7 +35,18 @@ async function request(path, options = {}) {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || 'Request failed');
+    const errorMessage = data.error || 'Request failed';
+    if (shouldToastError) {
+      toastError(errorMessage);
+    }
+    throw new Error(errorMessage);
+  }
+
+  if (shouldToastSuccess) {
+    const successMessage = String(meta.successMessage || data.message || resolveDefaultSuccessMessage(method)).trim();
+    if (successMessage) {
+      toastSuccess(successMessage);
+    }
   }
 
   return data;
@@ -34,6 +56,8 @@ export function register(payload) {
   return request('/api/auth/register', {
     method: 'POST',
     body: JSON.stringify(payload),
+  }, {
+    successMessage: 'Registration submitted successfully.',
   });
 }
 
@@ -41,6 +65,8 @@ export function login(payload) {
   return request('/api/auth/login', {
     method: 'POST',
     body: JSON.stringify(payload),
+  }, {
+    successMessage: 'Login successful.',
   });
 }
 
@@ -55,18 +81,24 @@ export function fetchClients() {
 export function acceptClient(id) {
   return request(`/api/admin/clients/${id}/accept-client`, {
     method: 'PATCH',
+  }, {
+    successMessage: 'Client accepted successfully.',
   });
 }
 
 export function acceptStaff(id) {
   return request(`/api/admin/clients/${id}/accept-staff`, {
     method: 'PATCH',
+  }, {
+    successMessage: 'Staff application accepted successfully.',
   });
 }
 
 export function acceptTraderRole() {
   return request('/api/client/accept-trader', {
     method: 'POST',
+  }, {
+    successMessage: 'Trader application submitted successfully.',
   });
 }
 
@@ -78,6 +110,8 @@ export function updateTraderProfile(payload) {
   return request('/api/trader/profile', {
     method: 'PATCH',
     body: JSON.stringify(payload),
+  }, {
+    successMessage: 'Profile updated successfully.',
   });
 }
 
@@ -88,6 +122,8 @@ export function uploadTraderProfileImage(file) {
   return request('/api/trader/profile/image', {
     method: 'POST',
     body: formData,
+  }, {
+    successMessage: 'Profile image uploaded successfully.',
   });
 }
 
@@ -109,6 +145,8 @@ export function createTraderProduct(payload) {
   return request('/api/trader/products', {
     method: 'POST',
     body: formData,
+  }, {
+    successMessage: 'Product added successfully.',
   });
 }
 
@@ -126,6 +164,8 @@ export function updateTraderProduct(productId, payload) {
   return request(`/api/trader/products/${productId}`, {
     method: 'PATCH',
     body: formData,
+  }, {
+    successMessage: 'Product updated successfully.',
   });
 }
 
@@ -149,12 +189,16 @@ export function addCartItem(payload) {
   return request('/api/trader/cart', {
     method: 'POST',
     body: JSON.stringify(payload),
+  }, {
+    successMessage: 'Item added to cart.',
   });
 }
 
 export function removeCartItem(id) {
   return request(`/api/trader/cart/${id}`, {
     method: 'DELETE',
+  }, {
+    successMessage: 'Item removed from cart.',
   });
 }
 
@@ -162,6 +206,8 @@ export function updateCartItemQuantity(id, quantity) {
   return request(`/api/trader/cart/${id}/quantity`, {
     method: 'PATCH',
     body: JSON.stringify({ quantity }),
+  }, {
+    successMessage: 'Cart quantity updated.',
   });
 }
 
@@ -169,6 +215,8 @@ export function placeMyOrder(payload) {
   return request('/api/trader/orders/place', {
     method: 'POST',
     body: JSON.stringify(payload || {}),
+  }, {
+    successMessage: 'Order placed successfully.',
   });
 }
 
@@ -192,6 +240,8 @@ export function sendMessageToTrader(traderId, messageText) {
   return request(`/api/trader/messages/${traderId}`, {
     method: 'POST',
     body: JSON.stringify({ messageText }),
+  }, {
+    successMessage: 'Message sent.',
   });
 }
 
@@ -223,6 +273,8 @@ export function uploadTraderPaper(payload) {
   return request('/api/trader/paper-uploads', {
     method: 'POST',
     body: formData,
+  }, {
+    successMessage: 'Paper uploaded successfully.',
   });
 }
 
@@ -237,5 +289,7 @@ export function reviewAdminPaperUpload(uploadId, payload) {
       status: payload.status,
       reviewNotes: payload.reviewNotes || '',
     }),
+  }, {
+    successMessage: 'Paper review updated successfully.',
   });
 }

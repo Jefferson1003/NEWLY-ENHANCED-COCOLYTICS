@@ -3,6 +3,7 @@ import { registerSW } from 'virtual:pwa-register'
 import App from './App.vue'
 import router from './router'
 import { initializeInstallManager } from './services/install'
+import { toastError } from './services/toast'
 import './style.css'
 
 document.title = 'Cocolytics'
@@ -48,4 +49,11 @@ applyTabIcons()
 initializeInstallManager()
 registerSW({ immediate: true })
 
-createApp(App).use(router).mount('#app')
+const app = createApp(App)
+
+app.config.errorHandler = (error) => {
+	const message = String(error?.message || 'An unexpected error occurred.')
+	toastError(message)
+}
+
+app.use(router).mount('#app')
