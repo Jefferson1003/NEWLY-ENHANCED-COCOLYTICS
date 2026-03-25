@@ -1629,7 +1629,7 @@ button:disabled {
   }
 
   .inventory-products {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .cart-image {
@@ -1649,6 +1649,12 @@ button:disabled {
   .modal-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+}
+
+@media (max-width: 390px) {
+  .inventory-products {
+    grid-template-columns: 1fr;
   }
 }
 </style>

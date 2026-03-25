@@ -54,13 +54,13 @@ const emit = defineEmits(['logout', 'close']);
     <nav class="nav-links">
       <router-link to="/trader/dashboard" @click="emit('close')">Dashboard</router-link>
       <router-link to="/trader/profile" @click="emit('close')">Profile</router-link>
+      <router-link to="/trader/documents" @click="emit('close')">Documents</router-link>
       <router-link to="/trader/marketplace" @click="emit('close')">Marketplace</router-link>
       <router-link to="/trader/inventory" class="inventory-link" @click="emit('close')">
         <span>Inventory</span>
         <span v-if="lowStockCount > 0" class="low-stock-badge">{{ lowStockCount }} low</span>
       </router-link>
       <router-link to="/trader/operations" @click="emit('close')">Operations</router-link>
-      <router-link to="/trader/documents" @click="emit('close')">Documents</router-link>
       <router-link to="/trader/browse-products" @click="emit('close')">Browse Products</router-link>
       <router-link to="/trader/messages" class="inventory-link" @click="emit('close')">
         <span>Messages</span>
