@@ -30,6 +30,10 @@ defineProps({
     type: Number,
     default: 0,
   },
+  marketplaceToReceiveCount: {
+    type: Number,
+    default: 0,
+  },
 });
 
 const emit = defineEmits(['logout', 'close']);
@@ -79,6 +83,7 @@ const emit = defineEmits(['logout', 'close']);
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16l-1.5 12.5A2 2 0 0 1 16.5 21h-9a2 2 0 0 1-2-1.5L4 7zm4-4h8l1 3H7l1-3z"/></svg>
           <span>Marketplace</span>
         </span>
+        <span v-if="marketplaceToReceiveCount > 0" class="low-stock-badge">{{ marketplaceToReceiveCount }} to receive</span>
       </router-link>
       <router-link to="/trader/manage-orders" class="inventory-link" @click="emit('close')">
         <span class="nav-main">

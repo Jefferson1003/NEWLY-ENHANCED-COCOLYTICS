@@ -5,6 +5,7 @@ import ConfirmationModal from '../../components/ConfirmationModal.vue';
 import TraderSidebar from '../../components/TraderSidebar.vue';
 import {
   fetchMe,
+  fetchMyOrders,
   fetchTraderMessageContacts,
   fetchTraderProducts,
   fetchTraderSalesOrders,
@@ -22,6 +23,7 @@ const showLogoutConfirm = ref(false);
 const lowStockCount = ref(0);
 const unreadMessagesCount = ref(0);
 const toAcceptCount = ref(0);
+const marketplaceToReceiveCount = ref(0);
 const incomingCall = ref(null);
 let unsubscribeCallEvent = null;
 let incomingRingAudioContext = null;
@@ -32,6 +34,7 @@ const isCallRoute = computed(() => route.name === 'trader-call');
 const INVENTORY_UPDATED_EVENT = 'cocolytics-inventory-updated';
 const MESSAGE_UPDATED_EVENT = 'cocolytics-messages-updated';
 const SALES_ORDERS_UPDATED_EVENT = 'cocolytics-sales-orders-updated';
+const MY_ORDERS_UPDATED_EVENT = 'cocolytics-my-orders-updated';
 const FAST_SIDEBAR_POLL_MS = 2500;
 let sidebarOrdersPollTimer = null;
 
@@ -228,6 +231,18 @@ async function loadToReceiveCount() {
   }
 }
 
+async function loadMarketplaceToReceiveCount() {
+  try {
+    const data = await fetchMyOrders();
+    const orders = data.orders || [];
+    marketplaceToReceiveCount.value = orders.filter(
+      (order) => String(order.status || '').toLowerCase() === 'to_receive'
+    ).length;
+  } catch {
+    marketplaceToReceiveCount.value = 0;
+  }
+}
+
 function startSidebarRealtimePolling() {
   if (sidebarOrdersPollTimer) {
     clearInterval(sidebarOrdersPollTimer);
@@ -240,6 +255,7 @@ function startSidebarRealtimePolling() {
     }
 
     loadToReceiveCount();
+    loadMarketplaceToReceiveCount();
   }, FAST_SIDEBAR_POLL_MS);
 }
 
@@ -282,6 +298,7 @@ onMounted(() => {
   loadLowStockCount();
   loadUnreadMessagesCount();
   loadToReceiveCount();
+  loadMarketplaceToReceiveCount();
   startSidebarRealtimePolling();
   ensureTraderRealtimeStream();
   unsubscribeCallEvent = subscribeTraderRealtime('chat-call', (rawEvent) => {
@@ -294,6 +311,7 @@ onMounted(() => {
   window.addEventListener(INVENTORY_UPDATED_EVENT, loadLowStockCount);
   window.addEventListener(MESSAGE_UPDATED_EVENT, loadUnreadMessagesCount);
   window.addEventListener(SALES_ORDERS_UPDATED_EVENT, loadToReceiveCount);
+  window.addEventListener(MY_ORDERS_UPDATED_EVENT, loadMarketplaceToReceiveCount);
 });
 
 onUnmounted(() => {
@@ -312,6 +330,7 @@ onUnmounted(() => {
   window.removeEventListener(INVENTORY_UPDATED_EVENT, loadLowStockCount);
   window.removeEventListener(MESSAGE_UPDATED_EVENT, loadUnreadMessagesCount);
   window.removeEventListener(SALES_ORDERS_UPDATED_EVENT, loadToReceiveCount);
+  window.removeEventListener(MY_ORDERS_UPDATED_EVENT, loadMarketplaceToReceiveCount);
   stopSidebarRealtimePolling();
 });
 </script>
@@ -325,6 +344,7 @@ onUnmounted(() => {
       :low-stock-count="lowStockCount"
       :unread-messages-count="unreadMessagesCount"
       :to-accept-count="toAcceptCount"
+      :marketplace-to-receive-count="marketplaceToReceiveCount"
       :is-open="sidebarOpen"
       @logout="requestLogout"
       @close="closeSidebar"

@@ -51,6 +51,7 @@ const cancellingOrderId = ref(null);
 const cancellationReason = ref('');
 const orderActionLoadingIds = ref([]);
 const productSaving = ref(false);
+const MY_ORDERS_UPDATED_EVENT = 'cocolytics-my-orders-updated';
 const editProductForm = reactive({
   productName: '',
   size: 'small',
@@ -242,6 +243,10 @@ function openAddressEditor() {
   router.push({ name: 'trader-address-editor' });
 }
 
+function emitMyOrdersUpdated() {
+  window.dispatchEvent(new CustomEvent(MY_ORDERS_UPDATED_EVENT));
+}
+
 function formatOrderStatus(status) {
   const normalized = String(status || '').trim().toLowerCase();
   if (!normalized) return 'Unknown';
@@ -315,6 +320,7 @@ async function submitCancelOrder() {
       order.status = 'cancelled';
       order.cancellationReason = reason;
     }
+    emitMyOrdersUpdated();
     closeCancelOrderModal();
   } catch (error) {
     feedback.value = error.message;
@@ -339,6 +345,7 @@ async function markOrderAsReceived(order) {
   try {
     await markMyOrderReceived(orderId);
     order.status = 'completed';
+    emitMyOrdersUpdated();
   } catch (error) {
     feedback.value = error.message;
   } finally {
@@ -568,6 +575,7 @@ async function loadOrders() {
   try {
     const data = await fetchMyOrders();
     orders.value = data.orders || [];
+    emitMyOrdersUpdated();
   } catch (error) {
     feedback.value = error.message;
   } finally {
