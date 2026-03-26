@@ -18,7 +18,7 @@ async function loadPendingClientCount() {
   try {
     const data = await fetchClients();
     const clients = data.clients || [];
-    pendingClientCount.value = clients.filter((item) => item.status === 'pending_client').length;
+    pendingClientCount.value = clients.filter((item) => item.status === 'pending_client' && !item.isArchived).length;
   } catch {
     pendingClientCount.value = 0;
   }

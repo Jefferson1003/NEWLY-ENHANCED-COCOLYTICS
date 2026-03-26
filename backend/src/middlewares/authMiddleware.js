@@ -7,7 +7,7 @@ export function createToken(user) {
   return jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
 }
 
-export function authRequired(req, res, next) {
+export async function authRequired(req, res, next) {
   const rawHeader = req.headers.authorization || '';
   const headerToken = rawHeader.startsWith('Bearer ') ? rawHeader.slice(7) : '';
   const queryToken = typeof req.query?.token === 'string' ? req.query.token : '';
@@ -19,7 +19,22 @@ export function authRequired(req, res, next) {
 
   try {
     const payload = jwt.verify(token, JWT_SECRET);
-    req.auth = payload;
+    const currentUser = await findUserById(payload.id);
+    if (!currentUser) {
+      return res.status(401).json({ error: 'User not found for this session.' });
+    }
+
+    if (currentUser.is_archived) {
+      return res.status(403).json({
+        error: 'You have been forced logout because your account was archived by the administrator.',
+        code: 'ACCOUNT_ARCHIVED',
+      });
+    }
+
+    req.auth = {
+      ...payload,
+      role: currentUser.role,
+    };
     return next();
   } catch {
     return res.status(401).json({ error: 'Invalid or expired authentication token.' });

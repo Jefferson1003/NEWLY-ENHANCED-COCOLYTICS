@@ -1,15 +1,23 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import ConfirmationModal from '../../components/ConfirmationModal.vue';
-import { acceptStaff, fetchClients } from '../../services/api';
+import {
+  acceptClient,
+  fetchClients,
+} from '../../services/api';
 
 const users = ref([]);
 const loading = ref(true);
 const feedback = ref('');
-const showAcceptConfirm = ref(false);
-const targetUser = ref(null);
+const showAcceptClientConfirm = ref(false);
+const showAcceptAllClientConfirm = ref(false);
+const targetClientUser = ref(null);
 
-const pendingStaff = computed(() => users.value.filter((user) => user.status === 'pending_staff'));
+const ADMIN_USERS_UPDATED_EVENT = 'cocolytics-admin-users-updated';
+
+const pendingClients = computed(() => users.value.filter((user) => user.status === 'pending_client'));
+
+const hasPendingClients = computed(() => pendingClients.value.length > 0);
 
 async function loadUsers() {
   loading.value = true;
@@ -24,30 +32,56 @@ async function loadUsers() {
   }
 }
 
-async function onAcceptStaff(id) {
+async function onAcceptClient(id) {
   try {
-    await acceptStaff(id);
+    await acceptClient(id);
     await loadUsers();
+    window.dispatchEvent(new CustomEvent(ADMIN_USERS_UPDATED_EVENT));
   } catch (error) {
     feedback.value = error.message;
   }
 }
 
-function requestAcceptStaff(user) {
-  targetUser.value = user;
-  showAcceptConfirm.value = true;
+function requestAcceptClient(user) {
+  targetClientUser.value = user;
+  showAcceptClientConfirm.value = true;
 }
 
-function cancelAcceptStaff() {
-  showAcceptConfirm.value = false;
-  targetUser.value = null;
+function cancelAcceptClient() {
+  showAcceptClientConfirm.value = false;
+  targetClientUser.value = null;
 }
 
-async function confirmAcceptStaff() {
-  if (!targetUser.value) return;
-  const selectedId = targetUser.value.id;
-  cancelAcceptStaff();
-  await onAcceptStaff(selectedId);
+function requestAcceptAllClients() {
+  showAcceptAllClientConfirm.value = true;
+}
+
+function cancelAcceptAllClients() {
+  showAcceptAllClientConfirm.value = false;
+}
+
+async function confirmAcceptClient() {
+  if (!targetClientUser.value) return;
+  const selectedId = targetClientUser.value.id;
+  cancelAcceptClient();
+  await onAcceptClient(selectedId);
+}
+
+async function confirmAcceptAllClients() {
+  const clientIds = pendingClients.value.map((user) => user.id);
+  cancelAcceptAllClients();
+
+  if (!clientIds.length) {
+    return;
+  }
+
+  for (const id of clientIds) {
+    // Keep this sequential to match the existing single accept-client flow.
+    await acceptClient(id);
+  }
+
+  await loadUsers();
+  window.dispatchEvent(new CustomEvent(ADMIN_USERS_UPDATED_EVENT));
 }
 
 onMounted(loadUsers);
@@ -57,12 +91,23 @@ onMounted(loadUsers);
   <section class="page">
     <header>
       <p class="kicker">Staff Applications</p>
-      <h2>Pending Staff Requests</h2>
+      <h2>Pending Client Requests</h2>
     </header>
 
     <p v-if="feedback" class="feedback">{{ feedback }}</p>
 
+    <div class="page-actions">
+      <button
+        type="button"
+        :disabled="loading || !hasPendingClients"
+        @click="requestAcceptAllClients"
+      >
+        Accept All Client Applications
+      </button>
+    </div>
+
     <div class="table-wrap">
+      <h3>Pending Client Applications</h3>
       <table>
         <thead>
           <tr>
@@ -75,32 +120,42 @@ onMounted(loadUsers);
         </thead>
         <tbody>
           <tr v-if="loading">
-            <td colspan="5">Loading staff applications...</td>
+            <td colspan="5">Loading client applications...</td>
           </tr>
-          <tr v-for="user in pendingStaff" :key="user.id">
+          <tr v-for="user in pendingClients" :key="`client-${user.id}`">
             <td>{{ user.fullName }}</td>
             <td>{{ user.email }}</td>
             <td>{{ user.status }}</td>
             <td>{{ user.staffReason || '-' }}</td>
             <td>
-              <button @click="requestAcceptStaff(user)">Accept as Staff</button>
+              <button @click="requestAcceptClient(user)">Accept as Client</button>
             </td>
           </tr>
-          <tr v-if="!loading && pendingStaff.length === 0">
-            <td colspan="5">No pending staff applications.</td>
+          <tr v-if="!loading && pendingClients.length === 0">
+            <td colspan="5">No pending client applications.</td>
           </tr>
         </tbody>
       </table>
     </div>
 
     <ConfirmationModal
-      :visible="showAcceptConfirm"
-      title="Confirm Staff Approval"
-      :message="`Approve ${targetUser?.fullName || 'this user'} as staff?`"
+      :visible="showAcceptClientConfirm"
+      title="Confirm Client Approval"
+      :message="`Approve ${targetClientUser?.fullName || 'this user'} as client?`"
       confirm-label="Yes, Accept"
       cancel-label="Cancel"
-      @confirm="confirmAcceptStaff"
-      @cancel="cancelAcceptStaff"
+      @confirm="confirmAcceptClient"
+      @cancel="cancelAcceptClient"
+    />
+
+    <ConfirmationModal
+      :visible="showAcceptAllClientConfirm"
+      title="Confirm Client Bulk Approval"
+      :message="`Approve all ${pendingClients.length} pending client application(s)?`"
+      confirm-label="Yes, Accept All"
+      cancel-label="Cancel"
+      @confirm="confirmAcceptAllClients"
+      @cancel="cancelAcceptAllClients"
     />
   </section>
 </template>
@@ -128,12 +183,26 @@ h2 {
   color: #ffbac7;
 }
 
+.page-actions {
+  margin-top: 0.9rem;
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
 .table-wrap {
   margin-top: 1rem;
   border: 1px solid rgba(139, 211, 255, 0.24);
   border-radius: 12px;
   overflow: auto;
   background: rgba(9, 31, 48, 0.78);
+}
+
+h3 {
+  margin: 0;
+  padding: 0.8rem 0.8rem 0;
+  font-size: 1rem;
+  color: #cbe8ff;
 }
 
 table {

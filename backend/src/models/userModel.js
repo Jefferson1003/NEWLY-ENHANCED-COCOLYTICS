@@ -27,7 +27,7 @@ export async function findUserForLogin(email) {
 
   const [rows] = await pool.execute(
     `
-      SELECT id, full_name, email, password_hash, role, status, is_email_verified, email_verified_at, created_at
+      SELECT id, full_name, email, password_hash, role, status, is_email_verified, email_verified_at, is_archived, archived_at, created_at
       FROM users
       WHERE email IN (?, ?)
       LIMIT 1
@@ -51,6 +51,8 @@ export async function findUserByEmail(email) {
         status,
         is_email_verified,
         email_verified_at,
+        is_archived,
+        archived_at,
         created_at
       FROM users
       WHERE email = ?
@@ -80,6 +82,8 @@ export async function findUserById(id) {
         business_address,
         staff_reason,
         profile_image_path,
+        is_archived,
+        archived_at,
         last_seen_at,
         created_at
       FROM users
@@ -217,7 +221,7 @@ export async function markOtpCodeUsedById(id) {
 export async function findAllNonAdminUsers() {
   const [rows] = await pool.execute(
     `
-      SELECT id, full_name, email, role, status, profile_name, contact_number, staff_reason, created_at
+      SELECT id, full_name, email, role, status, profile_name, contact_number, staff_reason, is_archived, archived_at, created_at
       FROM users
       WHERE role != 'admin'
       ORDER BY created_at DESC
@@ -232,7 +236,7 @@ export async function acceptPendingClientById(id) {
     `
       UPDATE users
       SET status = 'accepted_client'
-      WHERE id = ? AND role = 'client' AND status = 'pending_client'
+      WHERE id = ? AND role = 'client' AND status = 'pending_client' AND is_archived = 0
     `,
     [id]
   );
@@ -245,7 +249,45 @@ export async function acceptPendingStaffById(id) {
     `
       UPDATE users
       SET role = 'trader', status = 'trader'
-      WHERE id = ? AND role = 'client' AND status = 'pending_staff'
+      WHERE id = ? AND role = 'client' AND status = 'pending_staff' AND is_archived = 0
+    `,
+    [id]
+  );
+
+  return result.affectedRows;
+}
+
+export async function acceptAllPendingStaff() {
+  const [result] = await pool.execute(
+    `
+      UPDATE users
+      SET role = 'trader', status = 'trader'
+      WHERE role = 'client' AND status = 'pending_staff' AND is_archived = 0
+    `
+  );
+
+  return result.affectedRows;
+}
+
+export async function archiveUserById(id) {
+  const [result] = await pool.execute(
+    `
+      UPDATE users
+      SET is_archived = 1, archived_at = NOW()
+      WHERE id = ? AND role != 'admin' AND is_archived = 0
+    `,
+    [id]
+  );
+
+  return result.affectedRows;
+}
+
+export async function restoreArchivedUserById(id) {
+  const [result] = await pool.execute(
+    `
+      UPDATE users
+      SET is_archived = 0, archived_at = NULL
+      WHERE id = ? AND role != 'admin' AND is_archived = 1
     `,
     [id]
   );
@@ -333,6 +375,8 @@ export function sanitizeUser(user) {
     businessAddress: user.business_address || '',
     staffReason: user.staff_reason || '',
     profileImagePath: user.profile_image_path || '',
+    isArchived: Boolean(user.is_archived),
+    archivedAt: user.archived_at || null,
     lastSeenAt: user.last_seen_at || null,
     createdAt: user.created_at,
   };

@@ -46,20 +46,20 @@ export function pushToast({
   }
 }
 
-export function toastSuccess(message, title = 'Success') {
-  pushToast({ type: 'success', title, message });
+export function toastSuccess(message, title = 'Success', duration = DEFAULT_DURATION) {
+  pushToast({ type: 'success', title, message, duration });
 }
 
-export function toastError(message, title = 'Error') {
-  pushToast({ type: 'error', title, message });
+export function toastError(message, title = 'Error', duration = DEFAULT_DURATION) {
+  pushToast({ type: 'error', title, message, duration });
 }
 
-export function toastInfo(message, title = 'Info') {
-  pushToast({ type: 'info', title, message });
+export function toastInfo(message, title = 'Info', duration = DEFAULT_DURATION) {
+  pushToast({ type: 'info', title, message, duration });
 }
 
-export function toastWarning(message, title = 'Warning') {
-  pushToast({ type: 'warning', title, message });
+export function toastWarning(message, title = 'Warning', duration = DEFAULT_DURATION) {
+  pushToast({ type: 'warning', title, message, duration });
 }
 
 export function useToaster() {

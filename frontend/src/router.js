@@ -5,6 +5,7 @@ import AdminLayout from './pages/admin/AdminLayout.vue';
 import AdminDashboard from './pages/admin/AdminDashboard.vue';
 import AdminManageUsersPage from './pages/admin/AdminManageUsersPage.vue';
 import AdminStaffApplicationsPage from './pages/admin/AdminStaffApplicationsPage.vue';
+import AdminArchivedUsersPage from './pages/admin/AdminArchivedUsersPage.vue';
 import ClientDashboard from './pages/client/ClientDashboard.vue';
 import TraderDashboard from './pages/trader/TraderDashboard.vue';
 import TraderHomePage from './pages/trader/TraderHomePage.vue';
@@ -42,9 +43,19 @@ const router = createRouter({
         { path: 'dashboard', name: 'admin-dashboard', component: AdminDashboard },
         { path: 'manage-users', name: 'admin-manage-users', component: AdminManageUsersPage },
         {
+          path: 'manage-users/:id',
+          name: 'admin-manage-user-details',
+          component: AdminManageUsersPage,
+        },
+        {
           path: 'staff-applications',
           name: 'admin-staff-applications',
           component: AdminStaffApplicationsPage,
+        },
+        {
+          path: 'archived-users',
+          name: 'admin-archived-users',
+          component: AdminArchivedUsersPage,
         },
         {
           path: 'paper-approvals',

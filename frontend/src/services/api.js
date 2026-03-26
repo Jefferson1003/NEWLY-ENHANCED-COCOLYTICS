@@ -1,7 +1,8 @@
-import { getToken } from './session';
+import { clearSession, getToken } from './session';
 import { toastError, toastSuccess } from './toast';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const FORCED_LOGOUT_MESSAGE_KEY = 'cocolytics_forced_logout_message';
 
 function resolveDefaultSuccessMessage(method) {
   if (method === 'POST') return 'Created successfully.';
@@ -36,7 +37,23 @@ async function request(path, options = {}, meta = {}) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const errorMessage = data.error || 'Request failed';
-    if (shouldToastError) {
+    const isArchivedError = data.code === 'ACCOUNT_ARCHIVED';
+
+    if (isArchivedError) {
+      const forcedMessage = 'You have been forced logout because your account was archived by the administrator.';
+      clearSession();
+
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(FORCED_LOGOUT_MESSAGE_KEY, forcedMessage);
+        if (window.location.pathname !== '/auth') {
+          window.location.assign('/auth');
+        } else {
+          toastError(forcedMessage, 'Forced Logout', 5000);
+        }
+      }
+    }
+
+    if (shouldToastError && !isArchivedError) {
       toastError(errorMessage);
     }
     const requestError = new Error(errorMessage);
@@ -139,6 +156,34 @@ export function acceptStaff(id) {
     method: 'PATCH',
   }, {
     successMessage: 'Staff application accepted successfully.',
+  });
+}
+
+export function acceptAllStaffApplications() {
+  return request('/api/admin/clients/accept-staff-all', {
+    method: 'PATCH',
+  }, {
+    successMessage: 'All pending staff applications accepted successfully.',
+  });
+}
+
+export function fetchClientDetails(id) {
+  return request(`/api/admin/clients/${id}/details`);
+}
+
+export function archiveClient(id) {
+  return request(`/api/admin/clients/${id}/archive`, {
+    method: 'PATCH',
+  }, {
+    successMessage: 'User archived successfully.',
+  });
+}
+
+export function restoreClient(id) {
+  return request(`/api/admin/clients/${id}/restore`, {
+    method: 'PATCH',
+  }, {
+    successMessage: 'User restored successfully.',
   });
 }
 

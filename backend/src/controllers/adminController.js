@@ -1,11 +1,16 @@
 import {
+  acceptAllPendingStaff,
   acceptPendingClientById,
   acceptPendingStaffById,
+  archiveUserById,
   findAllNonAdminUsers,
+  findUserById,
+  restoreArchivedUserById,
   sanitizeUser,
 } from '../models/userModel.js';
 import {
   findAllPaperUploads,
+  findPaperUploadsByTraderId,
   findPaperUploadById,
   sanitizePaperUpload,
   updatePaperUploadStatus,
@@ -53,6 +58,79 @@ export async function acceptStaff(req, res) {
     return res.status(200).json({ message: 'Client promoted to staff.' });
   } catch {
     return res.status(500).json({ error: 'Could not approve staff request.' });
+  }
+}
+
+export async function acceptAllStaff(req, res) {
+  try {
+    const updatedCount = await acceptAllPendingStaff();
+    return res.status(200).json({
+      message: updatedCount
+        ? `Accepted ${updatedCount} staff application${updatedCount > 1 ? 's' : ''}.`
+        : 'No pending staff applications found.',
+      updatedCount,
+    });
+  } catch {
+    return res.status(500).json({ error: 'Could not approve all staff requests.' });
+  }
+}
+
+export async function getClientDetails(req, res) {
+  const targetId = Number(req.params.id);
+  if (Number.isNaN(targetId)) {
+    return res.status(400).json({ error: 'Invalid client ID.' });
+  }
+
+  try {
+    const user = await findUserById(targetId);
+    if (!user || user.role === 'admin') {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    const uploads = await findPaperUploadsByTraderId(targetId);
+
+    return res.status(200).json({
+      user: sanitizeUser(user),
+      documents: uploads.map(sanitizePaperUpload),
+    });
+  } catch {
+    return res.status(500).json({ error: 'Could not fetch user details.' });
+  }
+}
+
+export async function archiveClient(req, res) {
+  const targetId = Number(req.params.id);
+  if (Number.isNaN(targetId)) {
+    return res.status(400).json({ error: 'Invalid client ID.' });
+  }
+
+  try {
+    const affectedRows = await archiveUserById(targetId);
+    if (!affectedRows) {
+      return res.status(404).json({ error: 'User not found or already archived.' });
+    }
+
+    return res.status(200).json({ message: 'User archived successfully.' });
+  } catch {
+    return res.status(500).json({ error: 'Could not archive user.' });
+  }
+}
+
+export async function restoreClient(req, res) {
+  const targetId = Number(req.params.id);
+  if (Number.isNaN(targetId)) {
+    return res.status(400).json({ error: 'Invalid client ID.' });
+  }
+
+  try {
+    const affectedRows = await restoreArchivedUserById(targetId);
+    if (!affectedRows) {
+      return res.status(404).json({ error: 'Archived user not found.' });
+    }
+
+    return res.status(200).json({ message: 'User restored successfully.' });
+  } catch {
+    return res.status(500).json({ error: 'Could not restore user.' });
   }
 }
 

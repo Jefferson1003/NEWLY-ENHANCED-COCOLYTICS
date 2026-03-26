@@ -34,23 +34,29 @@ const emit = defineEmits(['logout', 'close']);
           <span>Dashboard</span>
         </span>
       </router-link>
-      <router-link to="/admin/manage-users" class="pending-link" @click="emit('close')">
+      <router-link to="/admin/manage-users" @click="emit('close')">
         <span class="nav-main">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11c1.7 0 3-1.3 3-3s-1.3-3-3-3-3 1.3-3 3 1.3 3 3 3zM8 11c1.7 0 3-1.3 3-3S9.7 5 8 5 5 6.3 5 8s1.3 3 3 3zm0 2c-2.3 0-7 1.2-7 3.5V19h14v-2.5C15 14.2 10.3 13 8 13zm8 0c-.3 0-.7 0-1.1.1 1.2.8 2.1 1.9 2.1 3.4V19h7v-2.5c0-2.3-4.7-3.5-7-3.5z"/></svg>
           <span>Manage Users</span>
         </span>
-        <span v-if="pendingClientCount > 0" class="pending-badge">{{ pendingClientCount }} pending</span>
       </router-link>
-      <router-link to="/admin/staff-applications" @click="emit('close')">
+      <router-link to="/admin/staff-applications" class="pending-link" @click="emit('close')">
         <span class="nav-main">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12c2.2 0 4-1.8 4-4S14.2 4 12 4 8 5.8 8 8s1.8 4 4 4zm0 2c-3.3 0-6 2.2-6 5v1h12v-1c0-2.8-2.7-5-6-5z"/></svg>
-          <span>Staff Applications</span>
+          <span>Client Applications</span>
         </span>
+        <span v-if="pendingClientCount > 0" class="pending-badge">{{ pendingClientCount }} pending</span>
       </router-link>
       <router-link to="/admin/paper-approvals" @click="emit('close')">
         <span class="nav-main">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm8 1.5V8h4.5"/></svg>
           <span>Paper Approvals</span>
+        </span>
+      </router-link>
+      <router-link to="/admin/archived-users" @click="emit('close')">
+        <span class="nav-main">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 7.5V20a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V7.5m3-3h11l1 3h-13l1-3zm4.5 5.5h-3v7h3v-7z"/></svg>
+          <span>Archived Users</span>
         </span>
       </router-link>
     </nav>

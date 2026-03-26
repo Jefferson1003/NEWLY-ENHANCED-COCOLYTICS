@@ -109,6 +109,13 @@ export async function login(req, res) {
       return res.status(401).json({ error: 'Invalid credentials.' });
     }
 
+    if (user.is_archived) {
+      return res.status(403).json({
+        error: 'Your account has been removed. Please contact the administrator.',
+        code: 'ACCOUNT_ARCHIVED',
+      });
+    }
+
     if (!user.is_email_verified) {
       return res.status(403).json({
         error: 'Email is not verified. Please verify your email first.',
