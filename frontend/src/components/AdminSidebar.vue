@@ -55,7 +55,10 @@ const emit = defineEmits(['logout', 'close']);
       </router-link>
     </nav>
 
-    <button type="button" class="logout" @click="emit('logout')">Logout</button>
+    <button type="button" class="logout" @click="emit('logout')">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7v-2h7V5h-7V3zm1.7 13.3L9.4 14H15v-4H9.4l2.3-2.3L10.3 6 5 11.3 10.3 16.6l1.4-1.3z"/></svg>
+      <span>Logout</span>
+    </button>
   </aside>
 </template>
 
@@ -180,6 +183,16 @@ h1 {
   padding: 0.6rem 0.8rem;
   font-weight: 800;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.logout svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
 }
 
 @media (max-width: 820px) {
