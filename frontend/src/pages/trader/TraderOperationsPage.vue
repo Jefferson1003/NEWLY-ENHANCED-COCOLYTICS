@@ -1,28 +1,26 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { fetchTraderPaperUploads, fetchTraderSalesOrders } from '../../services/api';
+import { fetchTraderSalesOrders } from '../../services/api';
 
 const activeFilter = ref('scanner');
 const loading = ref(false);
 const exporting = ref(false);
 const feedback = ref('');
 const salesOrders = ref([]);
-const paperUploads = ref([]);
 
 const completedStatuses = new Set(['completed', 'delivered', 'fulfilled']);
 
-const scannerItems = computed(() => {
-  return paperUploads.value
-    .filter((item) => item.paperType === 'to_cut')
-    .map((item) => ({
-      id: item.id,
-      code: `SCAN-${String(item.id).padStart(5, '0')}`,
-      productName: item.title,
-      scannedAt: item.createdAt,
-      operator: 'Trader Upload',
-      status: item.status,
-    }));
-});
+function orderRevenue(order) {
+  return (order.items || []).reduce((sum, item) => {
+    const lineTotal = Number(item?.lineTotal);
+    if (Number.isFinite(lineTotal) && lineTotal >= 0) {
+      return sum + lineTotal;
+    }
+
+    const fallback = Number(item?.unitPrice || 0) * Number(item?.quantity || 0);
+    return sum + (Number.isFinite(fallback) ? fallback : 0);
+  }, 0);
+}
 
 const totalOrders = computed(() => salesOrders.value.length);
 
@@ -36,6 +34,15 @@ const totalItemsSold = computed(() => {
     .reduce((sum, order) => {
       return sum + (order.items || []).reduce((itemSum, item) => itemSum + Number(item.quantity || 0), 0);
     }, 0);
+});
+
+const totalSalesRevenue = computed(() => {
+  return Number(
+    salesOrders.value
+      .filter((order) => completedStatuses.has(String(order.status || '').toLowerCase()))
+      .reduce((sum, order) => sum + orderRevenue(order), 0)
+      .toFixed(2)
+  );
 });
 
 const pendingDispatchCount = computed(() => {
@@ -53,10 +60,6 @@ const ratedOrders = computed(() => {
 });
 
 const ratedOrdersCount = computed(() => ratedOrders.value.length);
-
-const verificationIssues = computed(() => {
-  return scannerItems.value.filter((item) => String(item.status || '').toLowerCase() === 'rejected').length;
-});
 
 const averageRating = computed(() => {
   if (!ratedOrders.value.length) return 0;
@@ -133,6 +136,10 @@ const monthlyBreakdown = computed(() => {
   const rows = new Map();
 
   for (const order of salesOrders.value) {
+    if (!completedStatuses.has(String(order.status || '').toLowerCase())) {
+      continue;
+    }
+
     const date = new Date(order.createdAt);
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     const label = date.toLocaleString(undefined, { month: 'long', year: 'numeric' });
@@ -143,12 +150,14 @@ const monthlyBreakdown = computed(() => {
         label,
         orders: 0,
         itemsSold: 0,
+        revenue: 0,
       });
     }
 
     const row = rows.get(key);
     row.orders += 1;
     row.itemsSold += (order.items || []).reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+    row.revenue += orderRevenue(order);
   }
 
   return Array.from(rows.values())
@@ -159,6 +168,10 @@ const yearlyBreakdown = computed(() => {
   const rows = new Map();
 
   for (const order of salesOrders.value) {
+    if (!completedStatuses.has(String(order.status || '').toLowerCase())) {
+      continue;
+    }
+
     const year = String(new Date(order.createdAt).getFullYear());
 
     if (!rows.has(year)) {
@@ -166,12 +179,14 @@ const yearlyBreakdown = computed(() => {
         year,
         orders: 0,
         itemsSold: 0,
+        revenue: 0,
       });
     }
 
     const row = rows.get(year);
     row.orders += 1;
     row.itemsSold += (order.items || []).reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+    row.revenue += orderRevenue(order);
   }
 
   return Array.from(rows.values())
@@ -180,6 +195,16 @@ const yearlyBreakdown = computed(() => {
 
 const reportCards = computed(() => {
   return [
+    {
+      id: 'total-revenue',
+      title: 'Total Sales Revenue',
+      value: formatCurrency(totalSalesRevenue.value),
+      subtitle: 'Revenue from completed sales',
+      footerLeft: `Completed: ${completedOrdersCount.value}`,
+      footerRight: `Units: ${totalItemsSold.value}`,
+      accent: 'teal',
+      tag: 'live',
+    },
     {
       id: 'completed-sales',
       title: 'Completed Sales',
@@ -235,6 +260,7 @@ const reportCards = computed(() => {
 
 const summaryStats = computed(() => {
   return [
+    { id: 'sum-revenue', label: 'Total Sales Revenue', value: formatCurrency(totalSalesRevenue.value) },
     { id: 'sum-sales', label: 'Completed Sales', value: String(completedOrdersCount.value) },
     { id: 'sum-items', label: 'Total Items Sold', value: String(totalItemsSold.value) },
     { id: 'sum-orders', label: 'Total Orders', value: String(totalOrders.value) },
@@ -275,6 +301,15 @@ function formatStatus(status) {
   const normalized = String(status || '').trim().toLowerCase();
   if (!normalized) return 'Unknown';
   return normalized.split('_').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+}
+
+function formatCurrency(value) {
+  return new Intl.NumberFormat('en-PH', {
+    style: 'currency',
+    currency: 'PHP',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(value || 0));
 }
 
 function applySheetTitleStyle(cell) {
@@ -372,8 +407,9 @@ async function exportReportsToExcel() {
     applyTableHeaderStyle(summaryTableHeader);
 
     const summaryRows = [
-      [summaryStats.value[0]?.label || 'Completed Sales', summaryStats.value[0]?.value || '0', summaryStats.value[1]?.label || 'Total Items Sold', summaryStats.value[1]?.value || '0'],
-      [summaryStats.value[2]?.label || 'Total Orders', summaryStats.value[2]?.value || '0', summaryStats.value[3]?.label || 'Average Rating', summaryStats.value[3]?.value || 'N/A'],
+      [summaryStats.value[0]?.label || 'Total Sales Revenue', summaryStats.value[0]?.value || formatCurrency(0), summaryStats.value[1]?.label || 'Completed Sales', summaryStats.value[1]?.value || '0'],
+      [summaryStats.value[2]?.label || 'Total Items Sold', summaryStats.value[2]?.value || '0', summaryStats.value[3]?.label || 'Total Orders', summaryStats.value[3]?.value || '0'],
+      [summaryStats.value[4]?.label || 'Average Rating', summaryStats.value[4]?.value || 'N/A', '', ''],
     ];
 
     summaryRows.forEach((entry, index) => {
@@ -399,31 +435,53 @@ async function exportReportsToExcel() {
       applyTableBodyStyle(row, index % 2 === 0);
     });
 
+    overview.addRow([]);
+
+    const kpiHeader = overview.addRow(['Report KPI Cards', '', '', '']);
+    overview.mergeCells(`A${kpiHeader.number}:D${kpiHeader.number}`);
+    applySheetTitleStyle(overview.getCell(`A${kpiHeader.number}`));
+
+    const kpiTableHeader = overview.addRow(['Title', 'Value', 'Subtitle', 'Details']);
+    applyTableHeaderStyle(kpiTableHeader);
+
+    reportCards.value.forEach((card, index) => {
+      const row = overview.addRow([
+        card.title,
+        card.value,
+        card.subtitle,
+        `${card.footerLeft} | ${card.footerRight}`,
+      ]);
+      applyTableBodyStyle(row, index % 2 === 0);
+    });
+
     const monthlySheet = workbook.addWorksheet('Monthly Breakdown', { views: [{ showGridLines: false }] });
     monthlySheet.columns = [
       { width: 28 },
       { width: 14 },
       { width: 16 },
+      { width: 18 },
     ];
 
-    monthlySheet.mergeCells('A1:C1');
+    monthlySheet.mergeCells('A1:D1');
     monthlySheet.getCell('A1').value = 'Monthly Breakdown';
     applySheetTitleStyle(monthlySheet.getCell('A1'));
 
-    const monthlyHeader = monthlySheet.addRow(['Month', 'Orders', 'Items Sold']);
+    const monthlyHeader = monthlySheet.addRow(['Month', 'Orders', 'Items Sold', 'Revenue']);
     applyTableHeaderStyle(monthlyHeader);
 
     const monthlyRows = monthlyBreakdown.value.length
       ? monthlyBreakdown.value
-      : [{ label: 'No monthly data yet', orders: 0, itemsSold: 0 }];
+      : [{ label: 'No monthly data yet', orders: 0, itemsSold: 0, revenue: 0 }];
 
     monthlyRows.forEach((entry, index) => {
       const row = monthlySheet.addRow([
         entry.label,
         Number(entry.orders || 0),
         Number(entry.itemsSold || 0),
+        Number(entry.revenue || 0),
       ]);
       applyTableBodyStyle(row, index % 2 === 0);
+      row.getCell(4).numFmt = '[$₱-340A]#,##0.00';
     });
 
     const yearlySheet = workbook.addWorksheet('Yearly Breakdown', { views: [{ showGridLines: false }] });
@@ -431,26 +489,29 @@ async function exportReportsToExcel() {
       { width: 18 },
       { width: 14 },
       { width: 16 },
+      { width: 18 },
     ];
 
-    yearlySheet.mergeCells('A1:C1');
+    yearlySheet.mergeCells('A1:D1');
     yearlySheet.getCell('A1').value = 'Yearly Breakdown';
     applySheetTitleStyle(yearlySheet.getCell('A1'));
 
-    const yearlyHeader = yearlySheet.addRow(['Year', 'Orders', 'Items Sold']);
+    const yearlyHeader = yearlySheet.addRow(['Year', 'Orders', 'Items Sold', 'Revenue']);
     applyTableHeaderStyle(yearlyHeader);
 
     const yearlyRows = yearlyBreakdown.value.length
       ? yearlyBreakdown.value
-      : [{ year: 'No yearly data yet', orders: 0, itemsSold: 0 }];
+      : [{ year: 'No yearly data yet', orders: 0, itemsSold: 0, revenue: 0 }];
 
     yearlyRows.forEach((entry, index) => {
       const row = yearlySheet.addRow([
         entry.year,
         Number(entry.orders || 0),
         Number(entry.itemsSold || 0),
+        Number(entry.revenue || 0),
       ]);
       applyTableBodyStyle(row, index % 2 === 0);
+      row.getCell(4).numFmt = '[$₱-340A]#,##0.00';
     });
 
     const buffer = await workbook.xlsx.writeBuffer();
@@ -478,13 +539,9 @@ async function loadOperationsData() {
   loading.value = true;
   feedback.value = '';
   try {
-    const [salesOrdersData, papersData] = await Promise.all([
-      fetchTraderSalesOrders(),
-      fetchTraderPaperUploads(),
-    ]);
+    const salesOrdersData = await fetchTraderSalesOrders();
 
     salesOrders.value = salesOrdersData.orders || [];
-    paperUploads.value = papersData.uploads || [];
   } catch (error) {
     feedback.value = error.message || 'Could not load operations data.';
   } finally {
@@ -525,16 +582,7 @@ onMounted(loadOperationsData);
       <p v-if="loading" class="muted">Loading operations data...</p>
 
       <div v-if="!loading && activeFilter === 'scanner'" class="cards-grid">
-        <article v-for="item in scannerItems" :key="item.id" class="operation-card">
-          <header class="card-head">
-            <h3>{{ item.code }}</h3>
-            <span :class="['badge', classForStatus(item.status)]">{{ item.status }}</span>
-          </header>
-          <p class="line">Product: {{ item.productName }}</p>
-          <p class="line">Scanned At: {{ formatDate(item.scannedAt) }}</p>
-          <p class="line">Operator: {{ item.operator }}</p>
-        </article>
-        <p v-if="!scannerItems.length" class="muted">Content coming soon.</p>
+        <p class="muted">Content coming soon.</p>
       </div>
 
       <div v-else-if="!loading" class="reports-grid">
@@ -574,9 +622,10 @@ onMounted(loadOperationsData);
             <table>
               <thead>
                 <tr>
-                    <th>Month</th>
-                    <th>Orders</th>
-                    <th>Items Sold</th>
+                  <th>Month</th>
+                  <th>Orders</th>
+                  <th>Items Sold</th>
+                  <th>Revenue</th>
                 </tr>
               </thead>
               <tbody>
@@ -584,9 +633,10 @@ onMounted(loadOperationsData);
                   <td>{{ row.label }}</td>
                   <td>{{ row.orders }}</td>
                   <td>{{ row.itemsSold }}</td>
+                  <td>{{ formatCurrency(row.revenue) }}</td>
                 </tr>
                 <tr v-if="!monthlyBreakdown.length">
-                    <td colspan="3">No monthly data yet.</td>
+                  <td colspan="4">No monthly data yet.</td>
                 </tr>
               </tbody>
             </table>
@@ -600,9 +650,10 @@ onMounted(loadOperationsData);
             <table>
               <thead>
                 <tr>
-                    <th>Year</th>
-                    <th>Orders</th>
-                    <th>Items Sold</th>
+                  <th>Year</th>
+                  <th>Orders</th>
+                  <th>Items Sold</th>
+                  <th>Revenue</th>
                 </tr>
               </thead>
               <tbody>
@@ -610,9 +661,10 @@ onMounted(loadOperationsData);
                   <td>{{ row.year }}</td>
                   <td>{{ row.orders }}</td>
                   <td>{{ row.itemsSold }}</td>
+                  <td>{{ formatCurrency(row.revenue) }}</td>
                 </tr>
                 <tr v-if="!yearlyBreakdown.length">
-                    <td colspan="3">No yearly data yet.</td>
+                  <td colspan="4">No yearly data yet.</td>
                 </tr>
               </tbody>
             </table>
