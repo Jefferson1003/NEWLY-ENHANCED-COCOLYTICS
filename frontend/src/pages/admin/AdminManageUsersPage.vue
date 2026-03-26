@@ -278,6 +278,15 @@ watch(selectedUserId, async (nextId, prevId) => {
       <template v-else-if="selectedUser">
         <article class="detail-card">
           <h3>Basic Information</h3>
+          <div class="profile-preview">
+            <img
+              v-if="selectedUser.profileImagePath"
+              :src="toMediaUrl(selectedUser.profileImagePath)"
+              :alt="`${selectedUser.fullName || 'User'} profile image`"
+              class="profile-image"
+            />
+            <div v-else class="profile-fallback">No Profile Image</div>
+          </div>
           <dl class="detail-grid">
             <div><dt>Full Name</dt><dd>{{ selectedUser.fullName || '-' }}</dd></div>
             <div><dt>Email</dt><dd>{{ selectedUser.email || '-' }}</dd></div>
@@ -542,6 +551,34 @@ td {
 
 .detail-card h3 {
   margin: 0;
+}
+
+.profile-preview {
+  margin-top: 0.75rem;
+}
+
+.profile-image {
+  width: 108px;
+  height: 108px;
+  border-radius: 12px;
+  object-fit: cover;
+  border: 1px solid rgba(145, 208, 255, 0.5);
+  background: rgba(7, 27, 41, 0.8);
+}
+
+.profile-fallback {
+  width: 108px;
+  height: 108px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #afd9f8;
+  border: 1px dashed rgba(145, 208, 255, 0.5);
+  background: rgba(7, 27, 41, 0.55);
 }
 
 .detail-grid {
