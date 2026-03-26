@@ -203,6 +203,7 @@ async function restockProduct(product, restockQty) {
       productName: product.productName,
       size: product.size,
       lengthCm: product.lengthCm,
+      productPrice: product.productPrice,
       stockQuantity: nextStock,
     });
 

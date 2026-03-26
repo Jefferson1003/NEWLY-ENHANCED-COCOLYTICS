@@ -15,11 +15,25 @@ export async function findMarketplaceRows() {
         p.product_name,
         p.size,
         p.length_cm,
+        p.unit_price,
         p.stock_quantity,
         p.product_image_path,
-        p.created_at AS product_created_at
+        p.created_at AS product_created_at,
+        COALESCE(pm.total_sold_quantity, 0) AS total_sold_quantity,
+        pm.average_rating,
+        COALESCE(pm.rating_count, 0) AS rating_count
       FROM users u
       LEFT JOIN products p ON p.trader_id = u.id
+      LEFT JOIN (
+        SELECT
+          oi.product_id,
+          SUM(CASE WHEN o.status = 'completed' THEN oi.quantity ELSE 0 END) AS total_sold_quantity,
+          AVG(CASE WHEN o.status = 'completed' AND o.buyer_rating BETWEEN 1 AND 5 THEN o.buyer_rating END) AS average_rating,
+          SUM(CASE WHEN o.status = 'completed' AND o.buyer_rating BETWEEN 1 AND 5 THEN 1 ELSE 0 END) AS rating_count
+        FROM order_items oi
+        INNER JOIN orders o ON o.id = oi.order_id
+        GROUP BY oi.product_id
+      ) pm ON pm.product_id = p.id
       WHERE u.role = 'trader'
       ORDER BY u.created_at DESC, p.created_at DESC
     `
@@ -43,11 +57,25 @@ export async function findMarketplaceRowsByTraderId(traderId) {
         p.product_name,
         p.size,
         p.length_cm,
+        p.unit_price,
         p.stock_quantity,
         p.product_image_path,
-        p.created_at AS product_created_at
+        p.created_at AS product_created_at,
+        COALESCE(pm.total_sold_quantity, 0) AS total_sold_quantity,
+        pm.average_rating,
+        COALESCE(pm.rating_count, 0) AS rating_count
       FROM users u
       LEFT JOIN products p ON p.trader_id = u.id
+      LEFT JOIN (
+        SELECT
+          oi.product_id,
+          SUM(CASE WHEN o.status = 'completed' THEN oi.quantity ELSE 0 END) AS total_sold_quantity,
+          AVG(CASE WHEN o.status = 'completed' AND o.buyer_rating BETWEEN 1 AND 5 THEN o.buyer_rating END) AS average_rating,
+          SUM(CASE WHEN o.status = 'completed' AND o.buyer_rating BETWEEN 1 AND 5 THEN 1 ELSE 0 END) AS rating_count
+        FROM order_items oi
+        INNER JOIN orders o ON o.id = oi.order_id
+        GROUP BY oi.product_id
+      ) pm ON pm.product_id = p.id
       WHERE u.role = 'trader' AND u.id = ?
       ORDER BY u.created_at DESC, p.created_at DESC
     `,
@@ -61,6 +89,7 @@ export async function findProductById(productId) {
   const [rows] = await pool.execute(
     `
       SELECT id, trader_id, product_name, size, length_cm, stock_quantity, product_image_path
+         , unit_price
       FROM products
       WHERE id = ?
       LIMIT 1
@@ -99,6 +128,7 @@ export async function listCartByBuyerId(buyerId) {
         p.product_name,
         p.size,
         p.length_cm,
+        p.unit_price,
         p.stock_quantity,
         p.product_image_path,
         p.trader_id,
@@ -188,6 +218,7 @@ export async function placeOrderFromCart(buyerId, checkoutDetails, selectedCartI
           p.product_name,
           p.size,
           p.length_cm,
+          p.unit_price,
           p.stock_quantity,
           p.product_image_path
         FROM cart_items ci
@@ -257,10 +288,12 @@ export async function placeOrderFromCart(buyerId, checkoutDetails, selectedCartI
             product_name,
             size,
             length_cm,
+            unit_price,
             quantity,
+            line_total,
             product_image_path
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           orderId,
@@ -269,7 +302,9 @@ export async function placeOrderFromCart(buyerId, checkoutDetails, selectedCartI
           row.product_name,
           row.size,
           row.length_cm,
+          row.unit_price,
           row.quantity,
+          Number((Number(row.unit_price || 0) * Number(row.quantity || 0)).toFixed(2)),
           row.product_image_path,
         ]
       );
@@ -325,13 +360,19 @@ export async function listOrdersByBuyerId(buyerId) {
         o.payment_method,
         o.delivery_notes,
         o.cancellation_reason,
+        o.buyer_rating,
+        o.buyer_review,
+        o.buyer_rated_at,
+        o.updated_at AS order_updated_at,
         o.created_at AS order_created_at,
         oi.id AS order_item_id,
         oi.product_id,
         oi.product_name,
         oi.size,
         oi.length_cm,
+        oi.unit_price,
         oi.quantity,
+        oi.line_total,
         oi.product_image_path,
         oi.trader_id,
         COALESCE(NULLIF(u.profile_name, ''), u.full_name) AS trader_name
@@ -365,13 +406,19 @@ export async function listSalesOrderItemsByTraderId(traderId) {
         o.payment_method,
         o.delivery_notes,
         o.cancellation_reason,
+        o.buyer_rating,
+        o.buyer_review,
+        o.buyer_rated_at,
+        o.updated_at AS order_updated_at,
         o.created_at AS order_created_at,
         oi.id AS order_item_id,
         oi.product_id,
         oi.product_name,
         oi.size,
         oi.length_cm,
+        oi.unit_price,
         oi.quantity,
+        oi.line_total,
         oi.product_image_path,
         oi.trader_id,
         COALESCE(NULLIF(buyer.profile_name, ''), buyer.full_name) AS buyer_name
@@ -448,6 +495,23 @@ export async function updateOrderStatusByBuyerId(buyerId, orderId, status, cance
       WHERE id = ? AND buyer_id = ?
     `,
     [status, status, cancellationReason, orderId, buyerId]
+  );
+
+  return result.affectedRows;
+}
+
+export async function completeOrderWithRatingByBuyerId(buyerId, orderId, rating, review = null) {
+  const [result] = await pool.execute(
+    `
+      UPDATE orders
+      SET
+        status = 'completed',
+        buyer_rating = ?,
+        buyer_review = ?,
+        buyer_rated_at = NOW()
+      WHERE id = ? AND buyer_id = ?
+    `,
+    [rating, review, orderId, buyerId]
   );
 
   return result.affectedRows;

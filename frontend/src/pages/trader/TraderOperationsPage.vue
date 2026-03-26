@@ -1,12 +1,11 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { fetchTraderPaperUploads, fetchTraderProducts, fetchTraderSalesOrders } from '../../services/api';
+import { fetchTraderPaperUploads, fetchTraderSalesOrders } from '../../services/api';
 
 const activeFilter = ref('scanner');
 const loading = ref(false);
 const exporting = ref(false);
 const feedback = ref('');
-const products = ref([]);
 const salesOrders = ref([]);
 const paperUploads = ref([]);
 
@@ -25,17 +24,6 @@ const scannerItems = computed(() => {
     }));
 });
 
-const dispatchItems = computed(() => {
-  return salesOrders.value.map((item) => ({
-    id: item.id,
-    ticket: `DSP-${String(item.id).padStart(5, '0')}`,
-    destination: item.deliveryCity || item.deliveryFullAddress || '-',
-    truckPlate: 'N/A',
-    schedule: item.createdAt,
-    status: item.status || 'pending',
-  }));
-});
-
 const totalOrders = computed(() => salesOrders.value.length);
 
 const completedOrdersCount = computed(() => {
@@ -43,31 +31,37 @@ const completedOrdersCount = computed(() => {
 });
 
 const totalItemsSold = computed(() => {
-  return salesOrders.value.reduce((sum, order) => {
-    return sum + (order.items || []).reduce((itemSum, item) => itemSum + Number(item.quantity || 0), 0);
-  }, 0);
+  return salesOrders.value
+    .filter((order) => completedStatuses.has(String(order.status || '').toLowerCase()))
+    .reduce((sum, order) => {
+      return sum + (order.items || []).reduce((itemSum, item) => itemSum + Number(item.quantity || 0), 0);
+    }, 0);
 });
 
 const pendingDispatchCount = computed(() => {
-  return dispatchItems.value.filter((item) => {
-    const status = String(item.status || '').toLowerCase();
+  return salesOrders.value.filter((order) => {
+    const status = String(order.status || '').toLowerCase();
     return !completedStatuses.has(status) && status !== 'cancelled';
   }).length;
 });
 
-const totalRevenue = computed(() => {
-  // Price is not stored in current schema, so revenue remains zero until pricing is added.
-  return 0;
+const ratedOrders = computed(() => {
+  return salesOrders.value.filter((order) => {
+    const rating = Number(order.buyerRating);
+    return Number.isFinite(rating) && rating >= 1 && rating <= 5;
+  });
 });
+
+const ratedOrdersCount = computed(() => ratedOrders.value.length);
 
 const verificationIssues = computed(() => {
   return scannerItems.value.filter((item) => String(item.status || '').toLowerCase() === 'rejected').length;
 });
 
 const averageRating = computed(() => {
-  if (!totalOrders.value) return 0;
-  const completionRate = completedOrdersCount.value / totalOrders.value;
-  return Number((3 + completionRate * 2).toFixed(1));
+  if (!ratedOrders.value.length) return 0;
+  const ratingTotal = ratedOrders.value.reduce((sum, order) => sum + Number(order.buyerRating || 0), 0);
+  return Number((ratingTotal / ratedOrders.value.length).toFixed(1));
 });
 
 const growthPercent = computed(() => {
@@ -78,7 +72,11 @@ const growthPercent = computed(() => {
   const currentMonthSold = salesOrders.value
     .filter((order) => {
       const date = new Date(order.createdAt);
-      return date.getFullYear() === currentYear && date.getMonth() === currentMonth;
+      return (
+        completedStatuses.has(String(order.status || '').toLowerCase())
+        && date.getFullYear() === currentYear
+        && date.getMonth() === currentMonth
+      );
     })
     .reduce((sum, order) => sum + (order.items || []).reduce((acc, item) => acc + Number(item.quantity || 0), 0), 0);
 
@@ -89,7 +87,11 @@ const growthPercent = computed(() => {
   const previousMonthSold = salesOrders.value
     .filter((order) => {
       const date = new Date(order.createdAt);
-      return date.getFullYear() === previousYear && date.getMonth() === previousMonth;
+      return (
+        completedStatuses.has(String(order.status || '').toLowerCase())
+        && date.getFullYear() === previousYear
+        && date.getMonth() === previousMonth
+      );
     })
     .reduce((sum, order) => sum + (order.items || []).reduce((acc, item) => acc + Number(item.quantity || 0), 0), 0);
 
@@ -104,6 +106,10 @@ const topProducts = computed(() => {
   const map = new Map();
 
   for (const order of salesOrders.value) {
+    if (!completedStatuses.has(String(order.status || '').toLowerCase())) {
+      continue;
+    }
+
     for (const item of order.items || []) {
       const key = `${item.productName || 'Product'}|${item.size || 'N/A'}`;
       map.set(key, (map.get(key) || 0) + Number(item.quantity || 0));
@@ -137,7 +143,6 @@ const monthlyBreakdown = computed(() => {
         label,
         orders: 0,
         itemsSold: 0,
-        revenue: 0,
       });
     }
 
@@ -161,7 +166,6 @@ const yearlyBreakdown = computed(() => {
         year,
         orders: 0,
         itemsSold: 0,
-        revenue: 0,
       });
     }
 
@@ -177,12 +181,12 @@ const yearlyBreakdown = computed(() => {
 const reportCards = computed(() => {
   return [
     {
-      id: 'total-sales',
-      title: 'Total Sales',
-      value: formatCurrency(totalRevenue.value),
-      subtitle: 'Revenue from cocolumber sales',
-      footerLeft: `Items: ${totalItemsSold.value}`,
-      footerRight: `Avg: ${formatCurrency(totalItemsSold.value ? totalRevenue.value / totalItemsSold.value : 0)}`,
+      id: 'completed-sales',
+      title: 'Completed Sales',
+      value: `${completedOrdersCount.value} orders`,
+      subtitle: 'Only completed orders are counted as sales',
+      footerLeft: `Items Sold: ${totalItemsSold.value}`,
+      footerRight: `Rated: ${ratedOrdersCount.value}`,
       accent: 'green',
       tag: 'live',
     },
@@ -190,7 +194,7 @@ const reportCards = computed(() => {
       id: 'items-sold',
       title: 'Items Sold',
       value: `${totalItemsSold.value} units`,
-      subtitle: 'Total cocolumber quantity sold',
+      subtitle: 'Completed-order quantity only',
       footerLeft: `Top: ${topProducts.value[0]?.productName || '-'}`,
       footerRight: `${topProducts.value[0]?.quantity || 0} units`,
       accent: 'blue',
@@ -202,19 +206,19 @@ const reportCards = computed(() => {
       value: `${totalOrders.value} orders`,
       subtitle: 'Total orders received',
       footerLeft: `Completed: ${completedOrdersCount.value}`,
-      footerRight: `Pending: ${pendingDispatchCount.value}`,
+      footerRight: `In Progress: ${pendingDispatchCount.value}`,
       accent: 'purple',
       tag: 'live',
     },
     {
       id: 'rating',
       title: 'Rating',
-      value: `${averageRating.value.toFixed(1)} ★`,
-      subtitle: 'Performance score from completion rate',
-      footerLeft: averageRating.value >= 4 ? 'Very good' : averageRating.value >= 3 ? 'Good' : 'Needs work',
-      footerRight: '',
+      value: ratedOrdersCount.value ? `${averageRating.value.toFixed(1)} ★` : 'N/A',
+      subtitle: 'Average buyer rating from completed orders',
+      footerLeft: `Rated Orders: ${ratedOrdersCount.value}`,
+      footerRight: ratedOrdersCount.value ? 'Based on buyer feedback' : 'No ratings yet',
       accent: 'gold',
-      tag: averageRating.value.toFixed(1),
+      tag: ratedOrdersCount.value ? averageRating.value.toFixed(1) : 'N/A',
     },
     {
       id: 'growth',
@@ -231,10 +235,14 @@ const reportCards = computed(() => {
 
 const summaryStats = computed(() => {
   return [
-    { id: 'sum-revenue', label: 'Total Revenue', value: formatCurrency(totalRevenue.value) },
+    { id: 'sum-sales', label: 'Completed Sales', value: String(completedOrdersCount.value) },
     { id: 'sum-items', label: 'Total Items Sold', value: String(totalItemsSold.value) },
     { id: 'sum-orders', label: 'Total Orders', value: String(totalOrders.value) },
-    { id: 'sum-rating', label: 'Average Rating', value: `${averageRating.value.toFixed(1)}/5.0` },
+    {
+      id: 'sum-rating',
+      label: 'Average Rating',
+      value: ratedOrdersCount.value ? `${averageRating.value.toFixed(1)}/5.0` : 'N/A',
+    },
   ];
 });
 
@@ -252,7 +260,6 @@ const statusClasses = {
 
 const filterLabel = computed(() => {
   if (activeFilter.value === 'scanner') return 'Scanner';
-  if (activeFilter.value === 'dispatch') return 'Dispatch';
   return 'Reports';
 });
 
@@ -268,15 +275,6 @@ function formatStatus(status) {
   const normalized = String(status || '').trim().toLowerCase();
   if (!normalized) return 'Unknown';
   return normalized.split('_').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
-}
-
-function formatCurrency(value) {
-  return new Intl.NumberFormat('en-PH', {
-    style: 'currency',
-    currency: 'PHP',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Number(value || 0));
 }
 
 function applySheetTitleStyle(cell) {
@@ -374,8 +372,8 @@ async function exportReportsToExcel() {
     applyTableHeaderStyle(summaryTableHeader);
 
     const summaryRows = [
-      [summaryStats.value[0]?.label || 'Total Revenue', summaryStats.value[0]?.value || formatCurrency(0), summaryStats.value[1]?.label || 'Total Items Sold', summaryStats.value[1]?.value || '0'],
-      [summaryStats.value[2]?.label || 'Total Orders', summaryStats.value[2]?.value || '0', summaryStats.value[3]?.label || 'Average Rating', summaryStats.value[3]?.value || '0.0/5.0'],
+      [summaryStats.value[0]?.label || 'Completed Sales', summaryStats.value[0]?.value || '0', summaryStats.value[1]?.label || 'Total Items Sold', summaryStats.value[1]?.value || '0'],
+      [summaryStats.value[2]?.label || 'Total Orders', summaryStats.value[2]?.value || '0', summaryStats.value[3]?.label || 'Average Rating', summaryStats.value[3]?.value || 'N/A'],
     ];
 
     summaryRows.forEach((entry, index) => {
@@ -406,29 +404,26 @@ async function exportReportsToExcel() {
       { width: 28 },
       { width: 14 },
       { width: 16 },
-      { width: 18 },
     ];
 
-    monthlySheet.mergeCells('A1:D1');
+    monthlySheet.mergeCells('A1:C1');
     monthlySheet.getCell('A1').value = 'Monthly Breakdown';
     applySheetTitleStyle(monthlySheet.getCell('A1'));
 
-    const monthlyHeader = monthlySheet.addRow(['Month', 'Orders', 'Items Sold', 'Revenue']);
+    const monthlyHeader = monthlySheet.addRow(['Month', 'Orders', 'Items Sold']);
     applyTableHeaderStyle(monthlyHeader);
 
     const monthlyRows = monthlyBreakdown.value.length
       ? monthlyBreakdown.value
-      : [{ label: 'No monthly data yet', orders: 0, itemsSold: 0, revenue: 0 }];
+      : [{ label: 'No monthly data yet', orders: 0, itemsSold: 0 }];
 
     monthlyRows.forEach((entry, index) => {
       const row = monthlySheet.addRow([
         entry.label,
         Number(entry.orders || 0),
         Number(entry.itemsSold || 0),
-        Number(entry.revenue || 0),
       ]);
       applyTableBodyStyle(row, index % 2 === 0);
-      row.getCell(4).numFmt = '[$₱-340A]#,##0.00';
     });
 
     const yearlySheet = workbook.addWorksheet('Yearly Breakdown', { views: [{ showGridLines: false }] });
@@ -436,29 +431,26 @@ async function exportReportsToExcel() {
       { width: 18 },
       { width: 14 },
       { width: 16 },
-      { width: 18 },
     ];
 
-    yearlySheet.mergeCells('A1:D1');
+    yearlySheet.mergeCells('A1:C1');
     yearlySheet.getCell('A1').value = 'Yearly Breakdown';
     applySheetTitleStyle(yearlySheet.getCell('A1'));
 
-    const yearlyHeader = yearlySheet.addRow(['Year', 'Orders', 'Items Sold', 'Revenue']);
+    const yearlyHeader = yearlySheet.addRow(['Year', 'Orders', 'Items Sold']);
     applyTableHeaderStyle(yearlyHeader);
 
     const yearlyRows = yearlyBreakdown.value.length
       ? yearlyBreakdown.value
-      : [{ year: 'No yearly data yet', orders: 0, itemsSold: 0, revenue: 0 }];
+      : [{ year: 'No yearly data yet', orders: 0, itemsSold: 0 }];
 
     yearlyRows.forEach((entry, index) => {
       const row = yearlySheet.addRow([
         entry.year,
         Number(entry.orders || 0),
         Number(entry.itemsSold || 0),
-        Number(entry.revenue || 0),
       ]);
       applyTableBodyStyle(row, index % 2 === 0);
-      row.getCell(4).numFmt = '[$₱-340A]#,##0.00';
     });
 
     const buffer = await workbook.xlsx.writeBuffer();
@@ -486,13 +478,11 @@ async function loadOperationsData() {
   loading.value = true;
   feedback.value = '';
   try {
-    const [productsData, salesOrdersData, papersData] = await Promise.all([
-      fetchTraderProducts(),
+    const [salesOrdersData, papersData] = await Promise.all([
       fetchTraderSalesOrders(),
       fetchTraderPaperUploads(),
     ]);
 
-    products.value = productsData.products || [];
     salesOrders.value = salesOrdersData.orders || [];
     paperUploads.value = papersData.uploads || [];
   } catch (error) {
@@ -510,12 +500,11 @@ onMounted(loadOperationsData);
     <header class="head">
       <p class="kicker">Trader Operations</p>
       <h1>Operations Hub</h1>
-      <p class="sub">Track scanner flow, dispatch queue, and reports in one page.</p>
+      <p class="sub">Track scanner flow and reports in one page.</p>
     </header>
 
     <nav class="filters">
       <button type="button" :class="{ active: activeFilter === 'scanner' }" @click="activeFilter = 'scanner'">Scanner</button>
-      <button type="button" :class="{ active: activeFilter === 'dispatch' }" @click="activeFilter = 'dispatch'">Dispatch</button>
       <button type="button" :class="{ active: activeFilter === 'reports' }" @click="activeFilter = 'reports'">Reports</button>
     </nav>
 
@@ -545,20 +534,7 @@ onMounted(loadOperationsData);
           <p class="line">Scanned At: {{ formatDate(item.scannedAt) }}</p>
           <p class="line">Operator: {{ item.operator }}</p>
         </article>
-        <p v-if="!scannerItems.length" class="muted">No scanner records found.</p>
-      </div>
-
-      <div v-else-if="!loading && activeFilter === 'dispatch'" class="cards-grid">
-        <article v-for="item in dispatchItems" :key="item.id" class="operation-card">
-          <header class="card-head">
-            <h3>{{ item.ticket }}</h3>
-            <span :class="['badge', classForStatus(item.status)]">{{ item.status }}</span>
-          </header>
-          <p class="line">Destination: {{ item.destination }}</p>
-          <p class="line">Truck Plate: {{ item.truckPlate }}</p>
-          <p class="line">Schedule: {{ formatDate(item.schedule) }}</p>
-        </article>
-        <p v-if="!dispatchItems.length" class="muted">No dispatch records found.</p>
+        <p v-if="!scannerItems.length" class="muted">Content coming soon.</p>
       </div>
 
       <div v-else-if="!loading" class="reports-grid">
@@ -598,10 +574,9 @@ onMounted(loadOperationsData);
             <table>
               <thead>
                 <tr>
-                  <th>Month</th>
-                  <th>Orders</th>
-                  <th>Items Sold</th>
-                  <th>Revenue</th>
+                    <th>Month</th>
+                    <th>Orders</th>
+                    <th>Items Sold</th>
                 </tr>
               </thead>
               <tbody>
@@ -609,10 +584,9 @@ onMounted(loadOperationsData);
                   <td>{{ row.label }}</td>
                   <td>{{ row.orders }}</td>
                   <td>{{ row.itemsSold }}</td>
-                  <td>{{ formatCurrency(row.revenue) }}</td>
                 </tr>
                 <tr v-if="!monthlyBreakdown.length">
-                  <td colspan="4">No monthly data yet.</td>
+                    <td colspan="3">No monthly data yet.</td>
                 </tr>
               </tbody>
             </table>
@@ -626,10 +600,9 @@ onMounted(loadOperationsData);
             <table>
               <thead>
                 <tr>
-                  <th>Year</th>
-                  <th>Orders</th>
-                  <th>Items Sold</th>
-                  <th>Revenue</th>
+                    <th>Year</th>
+                    <th>Orders</th>
+                    <th>Items Sold</th>
                 </tr>
               </thead>
               <tbody>
@@ -637,10 +610,9 @@ onMounted(loadOperationsData);
                   <td>{{ row.year }}</td>
                   <td>{{ row.orders }}</td>
                   <td>{{ row.itemsSold }}</td>
-                  <td>{{ formatCurrency(row.revenue) }}</td>
                 </tr>
                 <tr v-if="!yearlyBreakdown.length">
-                  <td colspan="4">No yearly data yet.</td>
+                    <td colspan="3">No yearly data yet.</td>
                 </tr>
               </tbody>
             </table>

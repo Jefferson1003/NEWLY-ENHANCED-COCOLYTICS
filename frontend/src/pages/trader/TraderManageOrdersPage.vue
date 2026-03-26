@@ -47,6 +47,29 @@ function formatDispatchDate(value) {
   return new Date(value).toLocaleString();
 }
 
+function formatCurrency(value) {
+  return new Intl.NumberFormat('en-PH', {
+    style: 'currency',
+    currency: 'PHP',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(value || 0));
+}
+
+function itemLineTotal(item) {
+  const lineTotal = Number(item?.lineTotal);
+  if (Number.isFinite(lineTotal) && lineTotal >= 0) {
+    return lineTotal;
+  }
+
+  const fallback = Number(item?.unitPrice || 0) * Number(item?.quantity || 0);
+  return Number.isFinite(fallback) ? fallback : 0;
+}
+
+function orderTotal(order) {
+  return (order?.items || []).reduce((sum, item) => sum + itemLineTotal(item), 0);
+}
+
 function fullAddress(order) {
   const direct = String(order?.deliveryFullAddress || '').trim();
   if (direct) return direct;
@@ -341,12 +364,17 @@ onUnmounted(() => {
             <div class="cart-content">
               <p class="order-product">{{ item.productName || '-' }}</p>
               <p class="desc-line">Product Type: {{ item.size || 'N/A' }}</p>
+              <p class="desc-line">Unit Price: {{ formatCurrency(item.unitPrice) }}</p>
             </div>
 
             <div class="cart-right">
               <p class="order-qty">Quantity: {{ item.quantity ?? '-' }}</p>
+              <p class="order-qty">Line Total: {{ formatCurrency(itemLineTotal(item)) }}</p>
             </div>
           </article>
+          <p class="order-total-line">
+            <strong>Order Total:</strong> {{ formatCurrency(orderTotal(selectedDispatchOrder)) }}
+          </p>
         </section>
 
         <label class="dispatch-label">
@@ -425,6 +453,7 @@ onUnmounted(() => {
             <p><strong>Address:</strong> {{ fullAddress(order) }}</p>
             <p><strong>Dispatch Date:</strong> {{ formatDispatchDate(order.dispatchDate) }}</p>
             <p><strong>Notes:</strong> {{ order.deliveryNotes || '-' }}</p>
+            <p><strong>Order Total:</strong> {{ formatCurrency(orderTotal(order)) }}</p>
           </div>
 
           <div class="order-items">
@@ -440,10 +469,12 @@ onUnmounted(() => {
               <div class="cart-content">
                 <p class="order-product">{{ item.productName || '-' }}</p>
                 <p class="desc-line">Product Type: {{ item.size || 'N/A' }}</p>
+                <p class="desc-line">Unit Price: {{ formatCurrency(item.unitPrice) }}</p>
               </div>
 
               <div class="cart-right">
                 <p class="order-qty">Quantity: {{ item.quantity ?? '-' }}</p>
+                <p class="order-qty">Line Total: {{ formatCurrency(itemLineTotal(item)) }}</p>
               </div>
             </article>
           </div>
@@ -611,6 +642,12 @@ onUnmounted(() => {
 }
 
 .dispatch-items h3 {
+
+.order-total-line {
+  margin: 0.25rem 0 0;
+  color: #e5fff5;
+  font-size: 0.86rem;
+}
   margin: 0 0 0.45rem;
 }
 

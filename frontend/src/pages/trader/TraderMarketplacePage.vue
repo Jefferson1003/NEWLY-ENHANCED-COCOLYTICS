@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   cancelMyOrder,
@@ -26,6 +26,7 @@ const form = reactive({
   productName: '',
   size: 'small',
   lengthCm: '',
+  productPrice: 0,
   stockQuantity: 0,
   productImage: null,
 });
@@ -46,16 +47,22 @@ const quantityUpdatingIds = ref([]);
 const showCheckoutConfirmModal = ref(false);
 const showProductEditModal = ref(false);
 const showCancelOrderModal = ref(false);
+const showReceiveRatingModal = ref(false);
 const editingProduct = ref(null);
 const cancellingOrderId = ref(null);
+const receivingOrderId = ref(null);
 const cancellationReason = ref('');
+const receiveRating = ref(0);
+const receiveReview = ref('');
 const orderActionLoadingIds = ref([]);
 const productSaving = ref(false);
 const MY_ORDERS_UPDATED_EVENT = 'cocolytics-my-orders-updated';
+const FAST_MARKETPLACE_POLL_MS = 2500;
 const editProductForm = reactive({
   productName: '',
   size: 'small',
   lengthCm: '',
+  productPrice: 0,
   stockQuantity: 0,
   productImage: null,
 });
@@ -74,6 +81,7 @@ const orderStatusFilters = [
   { key: 'cancelled', label: 'Cancelled' },
 ];
 const currentUserId = computed(() => Number(getUser()?.id || 0));
+let marketplaceRealtimeTimer = null;
 
 function orderMatchesSearch(order, searchText) {
   if (!searchText) return true;
@@ -134,6 +142,28 @@ function sanitizeTraderRows(rows) {
         products,
         totalProducts: products.length,
         totalStocks: products.reduce((sum, product) => sum + Number(product.stockQuantity || 0), 0),
+        totalSoldQuantity: products.reduce((sum, product) => sum + Number(product.totalSoldQuantity || 0), 0),
+        ratedProductCount: products.filter((product) => Number(product.ratingCount || 0) > 0).length,
+        averageRating: (() => {
+          const weighted = products.reduce((acc, product) => {
+            const rating = Number(product.averageRating || 0);
+            const ratingCount = Number(product.ratingCount || 0);
+            if (ratingCount <= 0 || !Number.isFinite(rating)) {
+              return acc;
+            }
+
+            return {
+              ratingTotal: acc.ratingTotal + (rating * ratingCount),
+              countTotal: acc.countTotal + ratingCount,
+            };
+          }, { ratingTotal: 0, countTotal: 0 });
+
+          if (!weighted.countTotal) {
+            return null;
+          }
+
+          return Number((weighted.ratingTotal / weighted.countTotal).toFixed(1));
+        })(),
       };
     })
     .filter((trader) => (trader.products || []).length > 0);
@@ -206,6 +236,33 @@ function totalCartQuantity() {
 
 function cartItemDescription(item) {
   return withTrailingDots(`Size: ${item.size || 'N/A'} | Length: ${item.lengthCm ?? 'N/A'} cm | Qty: ${item.quantity}`, 58);
+}
+
+function formatCurrency(value) {
+  return new Intl.NumberFormat('en-PH', {
+    style: 'currency',
+    currency: 'PHP',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(value || 0));
+}
+
+function itemLineTotal(item) {
+  const lineTotal = Number(item?.lineTotal);
+  if (Number.isFinite(lineTotal) && lineTotal >= 0) {
+    return lineTotal;
+  }
+
+  const fallback = Number(item?.unitPrice || 0) * Number(item?.quantity || 0);
+  return Number.isFinite(fallback) ? fallback : 0;
+}
+
+const selectedCartAmount = computed(() => {
+  return selectedCartItems.value.reduce((sum, item) => sum + itemLineTotal(item), 0);
+});
+
+function orderTotal(order) {
+  return (order?.items || []).reduce((sum, item) => sum + itemLineTotal(item), 0);
 }
 
 function refreshSavedAddress() {
@@ -299,6 +356,40 @@ function closeCancelOrderModal() {
   cancellationReason.value = '';
 }
 
+function openReceiveRatingModal(order) {
+  const orderId = Number(order?.id || 0);
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    feedback.value = 'Invalid order selected.';
+    return;
+  }
+
+  if (normalizeOrderStatus(order.status) !== 'to_receive') {
+    feedback.value = 'Only To Receive orders can be completed.';
+    return;
+  }
+
+  receivingOrderId.value = orderId;
+  receiveRating.value = 0;
+  receiveReview.value = '';
+  showReceiveRatingModal.value = true;
+}
+
+function closeReceiveRatingModal() {
+  showReceiveRatingModal.value = false;
+  receivingOrderId.value = null;
+  receiveRating.value = 0;
+  receiveReview.value = '';
+}
+
+function setReceiveRating(value) {
+  const rating = Number(value);
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    return;
+  }
+
+  receiveRating.value = rating;
+}
+
 async function submitCancelOrder() {
   const orderId = Number(cancellingOrderId.value || 0);
   const reason = String(cancellationReason.value || '').trim();
@@ -329,23 +420,40 @@ async function submitCancelOrder() {
   }
 }
 
-async function markOrderAsReceived(order) {
-  const orderId = Number(order?.id || 0);
+async function markOrderAsReceived() {
+  const orderId = Number(receivingOrderId.value || 0);
   if (!Number.isInteger(orderId) || orderId <= 0) {
     feedback.value = 'Invalid order selected.';
     return;
   }
 
-  if (normalizeOrderStatus(order.status) !== 'to_receive') {
+  const rating = Number(receiveRating.value || 0);
+  const review = String(receiveReview.value || '').trim();
+
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    feedback.value = 'Please select a rating from 1 to 5 stars.';
+    return;
+  }
+
+  const order = orders.value.find((item) => Number(item.id) === orderId);
+  if (!order || normalizeOrderStatus(order.status) !== 'to_receive') {
     feedback.value = 'Only To Receive orders can be completed.';
     return;
   }
 
   setOrderActionLoading(orderId, true);
   try {
-    await markMyOrderReceived(orderId);
+    await markMyOrderReceived(orderId, {
+      rating,
+      review,
+    });
+
     order.status = 'completed';
+    order.buyerRating = rating;
+    order.buyerReview = review;
+    order.buyerRatedAt = new Date().toISOString();
     emitMyOrdersUpdated();
+    closeReceiveRatingModal();
   } catch (error) {
     feedback.value = error.message;
   } finally {
@@ -474,15 +582,23 @@ function increaseCartItemQuantity(item) {
   updateCartItemQuantity(item, Number(item.quantity || 0) + 1);
 }
 
-async function loadProducts() {
-  loadingProducts.value = true;
+async function loadProducts(options = {}) {
+  const { silent = false } = options;
+  if (!silent) {
+    loadingProducts.value = true;
+  }
+
   try {
     const data = await fetchTraderProducts();
     products.value = data.products || [];
   } catch (error) {
-    feedback.value = error.message;
+    if (!silent) {
+      feedback.value = error.message;
+    }
   } finally {
-    loadingProducts.value = false;
+    if (!silent) {
+      loadingProducts.value = false;
+    }
   }
 }
 
@@ -496,6 +612,7 @@ function openEditProductModal(product) {
   editProductForm.productName = String(product.productName || '').trim();
   editProductForm.size = String(product.size || 'small').toLowerCase();
   editProductForm.lengthCm = product.lengthCm ?? '';
+  editProductForm.productPrice = Number(product.productPrice || 0);
   editProductForm.stockQuantity = Number(product.stockQuantity || 0);
   editProductForm.productImage = null;
   showProductEditModal.value = true;
@@ -507,6 +624,7 @@ function closeEditProductModal() {
   editProductForm.productName = '';
   editProductForm.size = 'small';
   editProductForm.lengthCm = '';
+  editProductForm.productPrice = 0;
   editProductForm.stockQuantity = 0;
   editProductForm.productImage = null;
 }
@@ -530,6 +648,7 @@ async function saveEditedProduct() {
       productName: editProductForm.productName,
       size: editProductForm.size,
       lengthCm: editProductForm.lengthCm,
+      productPrice: editProductForm.productPrice,
       stockQuantity: editProductForm.stockQuantity,
       productImage: editProductForm.productImage,
     });
@@ -545,41 +664,113 @@ async function saveEditedProduct() {
   }
 }
 
-async function loadMarketplace() {
-  loadingMarketplace.value = true;
+async function loadMarketplace(options = {}) {
+  const { silent = false } = options;
+  if (!silent) {
+    loadingMarketplace.value = true;
+  }
+
   try {
     const data = await fetchMarketplaceTraders();
     marketplace.value = sanitizeTraderRows(data.traders || []);
   } catch (error) {
-    feedback.value = error.message;
+    if (!silent) {
+      feedback.value = error.message;
+    }
   } finally {
-    loadingMarketplace.value = false;
+    if (!silent) {
+      loadingMarketplace.value = false;
+    }
   }
 }
 
-async function loadCart() {
-  loadingCart.value = true;
+async function loadCart(options = {}) {
+  const { silent = false } = options;
+  if (!silent) {
+    loadingCart.value = true;
+  }
+
   try {
     const data = await fetchCartItems();
     cartItems.value = data.items || [];
     syncSelectedCartItems();
   } catch (error) {
-    feedback.value = error.message;
+    if (!silent) {
+      feedback.value = error.message;
+    }
   } finally {
-    loadingCart.value = false;
+    if (!silent) {
+      loadingCart.value = false;
+    }
   }
 }
 
-async function loadOrders() {
-  loadingOrders.value = true;
+async function loadOrders(options = {}) {
+  const { silent = false } = options;
+  if (!silent) {
+    loadingOrders.value = true;
+  }
+
   try {
     const data = await fetchMyOrders();
     orders.value = data.orders || [];
     emitMyOrdersUpdated();
   } catch (error) {
-    feedback.value = error.message;
+    if (!silent) {
+      feedback.value = error.message;
+    }
   } finally {
-    loadingOrders.value = false;
+    if (!silent) {
+      loadingOrders.value = false;
+    }
+  }
+}
+
+async function refreshActiveTabData() {
+  const active = String(activeTab.value || '').trim().toLowerCase();
+
+  if (active === 'inventory') {
+    await loadProducts({ silent: true });
+    return;
+  }
+
+  if (active === 'marketplace') {
+    await loadMarketplace({ silent: true });
+    return;
+  }
+
+  if (active === 'cart') {
+    await Promise.all([
+      loadCart({ silent: true }),
+      loadMarketplace({ silent: true }),
+    ]);
+    return;
+  }
+
+  if (active === 'orders') {
+    await loadOrders({ silent: true });
+  }
+}
+
+function startMarketplaceRealtimePolling() {
+  if (marketplaceRealtimeTimer) {
+    clearInterval(marketplaceRealtimeTimer);
+    marketplaceRealtimeTimer = null;
+  }
+
+  marketplaceRealtimeTimer = setInterval(() => {
+    if (document.visibilityState !== 'visible') {
+      return;
+    }
+
+    refreshActiveTabData().catch(() => {});
+  }, FAST_MARKETPLACE_POLL_MS);
+}
+
+function stopMarketplaceRealtimePolling() {
+  if (marketplaceRealtimeTimer) {
+    clearInterval(marketplaceRealtimeTimer);
+    marketplaceRealtimeTimer = null;
   }
 }
 
@@ -681,6 +872,7 @@ async function submitProduct() {
     form.productName = '';
     form.size = 'small';
     form.lengthCm = '';
+    form.productPrice = 0;
     form.stockQuantity = 0;
     form.productImage = null;
     await Promise.all([loadProducts(), loadMarketplace()]);
@@ -723,6 +915,7 @@ onMounted(async () => {
 
   refreshSavedAddress();
   await Promise.all([loadProducts(), loadMarketplace(), loadCart(), loadOrders()]);
+  startMarketplaceRealtimePolling();
 
   const selectedCartItemIdFromQuery = Number(route.query.selectCartItemId);
   if (Number.isInteger(selectedCartItemIdFromQuery) && selectedCartItemIdFromQuery > 0) {
@@ -731,6 +924,10 @@ onMounted(async () => {
       selectedCartItemIds.value = [...selectedCartItemIds.value, selectedCartItemIdFromQuery];
     }
   }
+});
+
+onUnmounted(() => {
+  stopMarketplaceRealtimePolling();
 });
 </script>
 
@@ -781,6 +978,11 @@ onMounted(async () => {
       </label>
 
       <label>
+        Product Price (PHP)
+        <input v-model.number="form.productPrice" type="number" step="0.01" min="0" required />
+      </label>
+
+      <label>
         Stock Quantity
         <input v-model.number="form.stockQuantity" type="number" min="0" step="1" required />
       </label>
@@ -812,6 +1014,7 @@ onMounted(async () => {
             <h3 :title="product.productName">{{ withLongDots(product.productName, 16) }}</h3>
             <p>Size: {{ product.size }}</p>
             <p>Length: {{ product.lengthCm ?? 'N/A' }} cm</p>
+            <p>Price: PHP {{ Number(product.productPrice || 0).toFixed(2) }}</p>
             <p>Stock: {{ product.stockQuantity }}</p>
             <button type="button" class="mini-btn" @click.stop="openEditProductModal(product)">Edit Product</button>
           </div>
@@ -839,6 +1042,11 @@ onMounted(async () => {
           </p>
           <p class="meta">Total Products: {{ trader.totalProducts }}</p>
           <p class="meta">Total Stocks: {{ trader.totalStocks }}</p>
+          <p class="meta">Total Sold: {{ trader.totalSoldQuantity || 0 }}</p>
+          <p class="meta">
+            Average Rating:
+            {{ trader.averageRating ? `${trader.averageRating}/5` : 'No ratings yet' }}
+          </p>
           <p class="meta">Contact: {{ trader.contactNumber || 'N/A' }}</p>
           <p class="meta">Address: {{ trader.businessAddress || 'N/A' }}</p>
 
@@ -911,6 +1119,8 @@ onMounted(async () => {
                   {{ withTrailingDots(item.productName, 34) }}
                 </button>
                 <p class="desc-line">{{ cartItemDescription(item) }}</p>
+                <p class="stock-line">Unit Price: {{ formatCurrency(item.unitPrice) }}</p>
+                <p class="stock-line">Line Total: {{ formatCurrency(itemLineTotal(item)) }}</p>
                 <p class="stock-line">Stock Left: {{ item.stockQuantity }}</p>
               </div>
 
@@ -955,10 +1165,11 @@ onMounted(async () => {
           <h3 class="checkout-title">Selected Order Summary</h3>
           <p>Selected Items: {{ selectedCartItems.length }}</p>
           <p>Total Quantity: {{ selectedCartQuantity }}</p>
+          <p>Total Amount: {{ formatCurrency(selectedCartAmount) }}</p>
 
           <ul v-if="selectedCartItems.length" class="summary-list">
             <li v-for="item in selectedCartItems" :key="item.id">
-              {{ item.productName }} | {{ item.size }} | Qty {{ item.quantity }} | {{ item.traderName }}
+              {{ item.productName }} | {{ item.size }} | Qty {{ item.quantity }} | {{ formatCurrency(itemLineTotal(item)) }}
             </li>
           </ul>
           <p v-else class="muted">Select cart cards to checkout.</p>
@@ -1006,8 +1217,14 @@ onMounted(async () => {
             <p><strong>Address:</strong> {{ order.deliveryFullAddress || '-' }}</p>
             <p><strong>Payment:</strong> {{ order.paymentMethod || 'cash_on_delivery' }}</p>
             <p><strong>Delivery Notes:</strong> {{ order.deliveryNotes || '-' }}</p>
+            <p><strong>Order Total:</strong> {{ formatCurrency(orderTotal(order)) }}</p>
             <p v-if="normalizeOrderStatus(order.status) === 'cancelled' && order.cancellationReason">
               <strong>Cancellation Reason:</strong> {{ order.cancellationReason }}
+            </p>
+            <p v-if="normalizeOrderStatus(order.status) === 'completed'">
+              <strong>Your Rating:</strong>
+              {{ order.buyerRating ? `${order.buyerRating}/5` : '-' }}
+              <span v-if="order.buyerReview">| {{ order.buyerReview }}</span>
             </p>
           </div>
 
@@ -1024,11 +1241,13 @@ onMounted(async () => {
               <div class="cart-content">
                 <p class="order-product">{{ withTrailingDots(item.productName, 36) }}</p>
                 <p class="desc-line">Size: {{ item.size || 'N/A' }} | Length: {{ item.lengthCm ?? 'N/A' }} cm</p>
+                <p class="stock-line">Unit Price: {{ formatCurrency(item.unitPrice) }}</p>
                 <p class="stock-line">Trader: {{ item.traderName || 'Trader' }}</p>
               </div>
 
               <div class="cart-right">
                 <p class="order-qty">Qty: {{ item.quantity }}</p>
+                <p class="order-qty">Line Total: {{ formatCurrency(itemLineTotal(item)) }}</p>
               </div>
             </article>
           </div>
@@ -1048,7 +1267,7 @@ onMounted(async () => {
               type="button"
               class="mini-btn"
               :disabled="isOrderActionLoading(order.id)"
-              @click="markOrderAsReceived(order)"
+              @click="openReceiveRatingModal(order)"
             >
               {{ isOrderActionLoading(order.id) ? 'Please wait...' : 'Received' }}
             </button>
@@ -1096,6 +1315,8 @@ onMounted(async () => {
             <div class="cart-content">
               <p class="order-product">{{ withTrailingDots(item.productName, 34) }}</p>
               <p class="desc-line">Size: {{ item.size || 'N/A' }} | Length: {{ item.lengthCm ?? 'N/A' }} cm</p>
+              <p class="stock-line">Unit Price: {{ formatCurrency(item.unitPrice) }}</p>
+              <p class="stock-line">Line Total: {{ formatCurrency(itemLineTotal(item)) }}</p>
               <p class="stock-line">Stock Left: {{ item.stockQuantity }} | Trader: {{ item.traderName }}</p>
             </div>
 
@@ -1133,7 +1354,10 @@ onMounted(async () => {
         </div>
 
         <footer class="modal-actions">
-          <p>Selected Items: {{ selectedCartItems.length }} | Total Quantity: {{ selectedCartQuantity }}</p>
+          <p>
+            Selected Items: {{ selectedCartItems.length }} | Total Quantity: {{ selectedCartQuantity }} |
+            Total Amount: {{ formatCurrency(selectedCartAmount) }}
+          </p>
           <button
             type="button"
             class="checkout-btn"
@@ -1141,6 +1365,58 @@ onMounted(async () => {
             @click="confirmCheckoutSelection"
           >
             Confirm Checkout (Pending Seller Acceptance)
+          </button>
+        </footer>
+      </section>
+    </div>
+
+    <div
+      v-if="showReceiveRatingModal"
+      class="modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Rate order"
+      @click.self="closeReceiveRatingModal"
+    >
+      <section class="modal-card product-edit-modal">
+        <header class="modal-head">
+          <h3>Rate This Order</h3>
+          <button type="button" class="mini-btn" @click="closeReceiveRatingModal">Close</button>
+        </header>
+
+        <p class="muted">How was your order experience?</p>
+
+        <div class="rating-stars" role="group" aria-label="Order rating">
+          <button
+            v-for="star in 5"
+            :key="`star-${star}`"
+            type="button"
+            :class="['star-btn', { active: receiveRating >= star }]"
+            @click="setReceiveRating(star)"
+          >
+            ★
+          </button>
+        </div>
+
+        <label>
+          Review (optional)
+          <textarea
+            v-model="receiveReview"
+            rows="4"
+            maxlength="600"
+            placeholder="Share your experience"
+          ></textarea>
+        </label>
+
+        <footer class="modal-actions">
+          <button type="button" class="mini-btn" @click="closeReceiveRatingModal">Back</button>
+          <button
+            type="button"
+            class="mini-btn"
+            :disabled="!receiveRating || isOrderActionLoading(Number(receivingOrderId || 0))"
+            @click="markOrderAsReceived"
+          >
+            {{ isOrderActionLoading(Number(receivingOrderId || 0)) ? 'Submitting...' : 'Submit Rating & Complete' }}
           </button>
         </footer>
       </section>
@@ -1209,6 +1485,11 @@ onMounted(async () => {
           <label>
             Length (cm)
             <input v-model="editProductForm.lengthCm" type="number" step="0.01" min="0" />
+          </label>
+
+          <label>
+            Product Price (PHP)
+            <input v-model.number="editProductForm.productPrice" type="number" step="0.01" min="0" required />
           </label>
 
           <label>
@@ -1830,6 +2111,30 @@ button:disabled {
 
 .modal-subtext {
   margin-top: 0.45rem;
+}
+
+.rating-stars {
+  margin-top: 0.65rem;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.star-btn {
+  border: 1px solid rgba(133, 229, 197, 0.45);
+  border-radius: 10px;
+  background: rgba(5, 27, 37, 0.75);
+  color: #8ccfbb;
+  width: 42px;
+  height: 38px;
+  font-size: 1.2rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.star-btn.active {
+  color: #ffd56f;
+  border-color: rgba(255, 213, 111, 0.65);
+  background: rgba(151, 106, 24, 0.35);
 }
 
 .modal-item-list {

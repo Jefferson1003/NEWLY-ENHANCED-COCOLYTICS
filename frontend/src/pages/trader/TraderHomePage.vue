@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { fetchMyOrders, fetchTraderProducts, fetchTraderProfile } from '../../services/api';
+import { fetchTraderProducts, fetchTraderProfile, fetchTraderSalesOrders } from '../../services/api';
 
 const profile = ref(null);
 const feedback = ref('');
@@ -41,6 +41,156 @@ const totalSoldUnits = computed(() => {
       return sum + units;
     }, 0);
 });
+
+function getOrderCompletionDate(order) {
+  const rawDate = order?.buyerRatedAt || order?.updatedAt || order?.createdAt;
+  const date = new Date(rawDate);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function orderRevenue(order) {
+  return (order.items || []).reduce((sum, item) => {
+    const lineTotal = Number(item?.lineTotal);
+    if (Number.isFinite(lineTotal)) {
+      return sum + lineTotal;
+    }
+
+    const fallback = Number(item?.unitPrice || 0) * Number(item?.quantity || 0);
+    return sum + (Number.isFinite(fallback) ? fallback : 0);
+  }, 0);
+}
+
+function getWeekStart(date) {
+  const start = new Date(date);
+  const day = start.getDay();
+  const diff = (day + 6) % 7;
+  start.setDate(start.getDate() - diff);
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+const completedSalesOrders = computed(() => {
+  return orders.value
+    .filter((order) => completedStatuses.has(String(order.status || '').toLowerCase()))
+    .map((order) => ({
+      ...order,
+      completedAt: getOrderCompletionDate(order),
+      revenue: Number(orderRevenue(order).toFixed(2)),
+    }))
+    .filter((order) => order.completedAt);
+});
+
+const totalSalesRevenue = computed(() => {
+  return Number(completedSalesOrders.value.reduce((sum, order) => sum + Number(order.revenue || 0), 0).toFixed(2));
+});
+
+const weeklyRevenue = computed(() => {
+  const now = new Date();
+  const weekStart = getWeekStart(now);
+  return Number(
+    completedSalesOrders.value
+      .filter((order) => order.completedAt >= weekStart && order.completedAt <= now)
+      .reduce((sum, order) => sum + Number(order.revenue || 0), 0)
+      .toFixed(2)
+  );
+});
+
+const monthlyRevenue = computed(() => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  return Number(
+    completedSalesOrders.value
+      .filter((order) => {
+        const date = order.completedAt;
+        return date.getFullYear() === year && date.getMonth() === month;
+      })
+      .reduce((sum, order) => sum + Number(order.revenue || 0), 0)
+      .toFixed(2)
+  );
+});
+
+const quarterlyRevenue = computed(() => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const quarterIndex = Math.floor(now.getMonth() / 3);
+  return Number(
+    completedSalesOrders.value
+      .filter((order) => {
+        const date = order.completedAt;
+        return date.getFullYear() === year && Math.floor(date.getMonth() / 3) === quarterIndex;
+      })
+      .reduce((sum, order) => sum + Number(order.revenue || 0), 0)
+      .toFixed(2)
+  );
+});
+
+const annualRevenue = computed(() => {
+  const year = new Date().getFullYear();
+  return Number(
+    completedSalesOrders.value
+      .filter((order) => order.completedAt.getFullYear() === year)
+      .reduce((sum, order) => sum + Number(order.revenue || 0), 0)
+      .toFixed(2)
+  );
+});
+
+const ratedOrders = computed(() => {
+  return completedSalesOrders.value.filter((order) => {
+    const rating = Number(order.buyerRating);
+    return Number.isFinite(rating) && rating >= 1 && rating <= 5;
+  });
+});
+
+const averageRating = computed(() => {
+  if (!ratedOrders.value.length) return 0;
+  const total = ratedOrders.value.reduce((sum, order) => sum + Number(order.buyerRating || 0), 0);
+  return Number((total / ratedOrders.value.length).toFixed(1));
+});
+
+const bestSellingProducts = computed(() => {
+  const map = new Map();
+
+  for (const order of completedSalesOrders.value) {
+    for (const item of order.items || []) {
+      const productId = Number(item.productId || 0);
+      const key = productId > 0 ? `id-${productId}` : `name-${item.productName || 'Product'}`;
+      const existing = map.get(key) || {
+        key,
+        productName: item.productName || 'Product',
+        size: item.size || 'N/A',
+        units: 0,
+        revenue: 0,
+      };
+
+      const quantity = Number(item.quantity || 0);
+      const lineTotal = Number(item.lineTotal || (Number(item.unitPrice || 0) * quantity) || 0);
+      existing.units += Number.isFinite(quantity) ? quantity : 0;
+      existing.revenue += Number.isFinite(lineTotal) ? lineTotal : 0;
+      map.set(key, existing);
+    }
+  }
+
+  return Array.from(map.values())
+    .sort((a, b) => {
+      if (b.units !== a.units) return b.units - a.units;
+      return b.revenue - a.revenue;
+    })
+    .slice(0, 5)
+    .map((row) => ({
+      ...row,
+      revenue: Number(row.revenue.toFixed(2)),
+    }));
+});
+
+function formatCurrency(value) {
+  return new Intl.NumberFormat('en-PH', {
+    style: 'currency',
+    currency: 'PHP',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(value || 0));
+}
 
 const stockHealth = computed(() => {
   if (!products.value.length) return 0;
@@ -85,7 +235,7 @@ async function loadDashboard() {
     const [profileData, productsData, ordersData] = await Promise.all([
       fetchTraderProfile(),
       fetchTraderProducts(),
-      fetchMyOrders(),
+      fetchTraderSalesOrders(),
     ]);
 
     profile.value = profileData.user;
@@ -123,6 +273,11 @@ onMounted(loadDashboard);
       </article>
 
       <article class="stat-card">
+        <p class="stat-label">Total Sales Revenue</p>
+        <p class="stat-value">{{ formatCurrency(totalSalesRevenue) }}</p>
+      </article>
+
+      <article class="stat-card">
         <p class="stat-label">Open Orders</p>
         <p class="stat-value">{{ openOrders }}</p>
       </article>
@@ -141,7 +296,37 @@ onMounted(loadDashboard);
         <p class="stat-label">Low and Out of Stock</p>
         <p class="stat-value">{{ lowStockCount }} / {{ outOfStockCount }}</p>
       </article>
+
+      <article class="stat-card">
+        <p class="stat-label">Average Rating</p>
+        <p class="stat-value">{{ ratedOrders.length ? `${averageRating.toFixed(1)} / 5` : 'N/A' }}</p>
+      </article>
     </section>
+
+    <article v-if="!loading" class="panel">
+      <header class="panel-head">
+        <h2>Revenue Analytics</h2>
+        <span class="chip">Sales only</span>
+      </header>
+      <div class="period-grid">
+        <div class="period-card">
+          <p>This Week</p>
+          <strong>{{ formatCurrency(weeklyRevenue) }}</strong>
+        </div>
+        <div class="period-card">
+          <p>This Month</p>
+          <strong>{{ formatCurrency(monthlyRevenue) }}</strong>
+        </div>
+        <div class="period-card">
+          <p>This Quarter</p>
+          <strong>{{ formatCurrency(quarterlyRevenue) }}</strong>
+        </div>
+        <div class="period-card">
+          <p>This Year</p>
+          <strong>{{ formatCurrency(annualRevenue) }}</strong>
+        </div>
+      </div>
+    </article>
 
     <article v-if="!loading" class="panel">
       <header class="panel-head">
@@ -163,6 +348,24 @@ onMounted(loadDashboard);
           <strong>{{ item.count }}</strong>
         </li>
       </ul>
+    </article>
+
+    <article v-if="!loading" class="panel">
+      <header class="panel-head">
+        <h2>Best Selling Products</h2>
+        <span class="chip">Top 5</span>
+      </header>
+      <p v-if="!bestSellingProducts.length" class="muted-line">No completed sales yet.</p>
+      <ul v-else class="status-list">
+        <li v-for="item in bestSellingProducts" :key="item.key">
+          <span>{{ item.productName }} ({{ item.size }}) • {{ item.units }} units</span>
+          <strong>{{ formatCurrency(item.revenue) }}</strong>
+        </li>
+      </ul>
+      <p class="muted-line">
+        Rated Orders: {{ ratedOrders.length }}
+        <span v-if="ratedOrders.length"> | Avg Rating: {{ averageRating.toFixed(1) }}/5</span>
+      </p>
     </article>
 
     <p v-if="feedback" class="feedback">{{ feedback }}</p>
@@ -274,6 +477,33 @@ h2 {
   background: linear-gradient(90deg, #1da879, #4fd7a9);
 }
 
+.period-grid {
+  margin-top: 0.7rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.period-card {
+  border: 1px solid rgba(114, 217, 180, 0.28);
+  border-radius: 10px;
+  background: rgba(6, 33, 44, 0.64);
+  padding: 0.55rem 0.62rem;
+}
+
+.period-card p {
+  margin: 0;
+  color: #c9fce6;
+  font-size: 0.8rem;
+}
+
+.period-card strong {
+  display: block;
+  margin-top: 0.3rem;
+  color: #effff7;
+  font-size: 1rem;
+}
+
 .muted-line {
   margin: 0.62rem 0 0;
   color: #c8fce6;
@@ -313,6 +543,10 @@ h2 {
 @media (min-width: 760px) {
   .stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .period-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 </style>

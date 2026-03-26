@@ -31,6 +31,7 @@ import {
   findMarketplaceRows,
   findMarketplaceRowsByTraderId,
   findCartItemById,
+  completeOrderWithRatingByBuyerId,
   findOrderByBuyerId,
   findProductById,
   findSalesOrderStatusByTraderId,
@@ -195,7 +196,11 @@ function mapMarketplaceRowsToTraders(rows) {
         productName: row.product_name,
         size: row.size,
         lengthCm: row.length_cm,
+        productPrice: Number(row.unit_price || 0),
         stockQuantity: row.stock_quantity,
+        totalSoldQuantity: Number(row.total_sold_quantity || 0),
+        averageRating: row.average_rating === null ? null : Number(Number(row.average_rating).toFixed(1)),
+        ratingCount: Number(row.rating_count || 0),
         productImagePath: row.product_image_path,
         createdAt: row.product_created_at,
       });
@@ -313,7 +318,7 @@ export async function listMyProducts(req, res) {
 }
 
 export async function addProduct(req, res) {
-  const { productName, size, lengthCm, stockQuantity } = req.body;
+  const { productName, size, lengthCm, stockQuantity, productPrice } = req.body;
   const normalizedSize = String(size || '').trim().toLowerCase();
   const fixedSize = normalizedSize === 'meduim' ? 'medium' : normalizedSize;
 
@@ -327,6 +332,9 @@ export async function addProduct(req, res) {
 
   const parsedLength = lengthCm === '' || lengthCm === undefined ? null : Number(lengthCm);
   const parsedStock = Number(stockQuantity);
+  const parsedPrice = productPrice === '' || productPrice === undefined
+    ? 0
+    : Number(productPrice);
 
   if (parsedLength !== null && (!Number.isFinite(parsedLength) || parsedLength < 0)) {
     return res.status(400).json({ error: 'lengthCm must be 0 or higher.' });
@@ -334,6 +342,10 @@ export async function addProduct(req, res) {
 
   if (!Number.isInteger(parsedStock) || parsedStock < 0) {
     return res.status(400).json({ error: 'stockQuantity must be a non-negative whole number.' });
+  }
+
+  if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+    return res.status(400).json({ error: 'productPrice must be a non-negative number.' });
   }
 
   try {
@@ -344,6 +356,7 @@ export async function addProduct(req, res) {
       productName,
       size: fixedSize,
       lengthCm: parsedLength,
+      productPrice: parsedPrice,
       stockQuantity: parsedStock,
       productImagePath,
     });
@@ -360,7 +373,7 @@ export async function addProduct(req, res) {
 
 export async function updateProduct(req, res) {
   const productId = Number(req.params.id);
-  const { productName, size, lengthCm, stockQuantity } = req.body;
+  const { productName, size, lengthCm, stockQuantity, productPrice } = req.body;
   const normalizedSize = String(size || '').trim().toLowerCase();
   const fixedSize = normalizedSize === 'meduim' ? 'medium' : normalizedSize;
 
@@ -378,6 +391,8 @@ export async function updateProduct(req, res) {
 
   const parsedLength = lengthCm === '' || lengthCm === undefined ? null : Number(lengthCm);
   const parsedStock = Number(stockQuantity);
+  const hasProvidedPrice = !(productPrice === '' || productPrice === undefined || productPrice === null);
+  const parsedPrice = hasProvidedPrice ? Number(productPrice) : null;
 
   if (parsedLength !== null && (!Number.isFinite(parsedLength) || parsedLength < 0)) {
     return res.status(400).json({ error: 'lengthCm must be 0 or higher.' });
@@ -385,6 +400,10 @@ export async function updateProduct(req, res) {
 
   if (!Number.isInteger(parsedStock) || parsedStock < 0) {
     return res.status(400).json({ error: 'stockQuantity must be a non-negative whole number.' });
+  }
+
+  if (hasProvidedPrice && (!Number.isFinite(parsedPrice) || parsedPrice < 0)) {
+    return res.status(400).json({ error: 'productPrice must be a non-negative number.' });
   }
 
   try {
@@ -399,6 +418,7 @@ export async function updateProduct(req, res) {
       productName,
       size: fixedSize,
       lengthCm: parsedLength,
+      productPrice: hasProvidedPrice ? parsedPrice : Number(existingProduct.unit_price || 0),
       stockQuantity: parsedStock,
       productImagePath,
     });
@@ -474,6 +494,8 @@ export async function listCart(req, res) {
         productName: item.product_name,
         size: item.size,
         lengthCm: item.length_cm,
+        unitPrice: Number(item.unit_price || 0),
+        lineTotal: Number((Number(item.unit_price || 0) * Number(item.quantity || 0)).toFixed(2)),
         stockQuantity: item.stock_quantity,
         productImagePath: item.product_image_path,
         traderId: item.trader_id,
@@ -608,6 +630,10 @@ export async function listOrders(req, res) {
           id: row.order_id,
           status: row.status,
           dispatchDate: row.dispatch_date,
+          updatedAt: row.order_updated_at,
+          buyerRating: row.buyer_rating,
+          buyerReview: row.buyer_review || '',
+          buyerRatedAt: row.buyer_rated_at,
           customerFullName: row.customer_full_name || '',
           customerContactNumber: row.customer_contact_number || '',
           deliveryRegion: row.delivery_region || '',
@@ -631,7 +657,9 @@ export async function listOrders(req, res) {
         productName: row.product_name,
         size: row.size,
         lengthCm: row.length_cm,
+        unitPrice: Number(row.unit_price || 0),
         quantity: row.quantity,
+        lineTotal: Number(row.line_total || 0),
         productImagePath: row.product_image_path,
         traderId: row.trader_id,
         traderName: row.trader_name,
@@ -655,6 +683,10 @@ export async function listSalesOrders(req, res) {
           id: row.order_id,
           status: row.status,
           dispatchDate: row.dispatch_date,
+          updatedAt: row.order_updated_at,
+          buyerRating: row.buyer_rating,
+          buyerReview: row.buyer_review || '',
+          buyerRatedAt: row.buyer_rated_at,
           buyerName: row.buyer_name || '',
           customerFullName: row.customer_full_name || '',
           customerContactNumber: row.customer_contact_number || '',
@@ -679,7 +711,9 @@ export async function listSalesOrders(req, res) {
         productName: row.product_name,
         size: row.size,
         lengthCm: row.length_cm,
+        unitPrice: Number(row.unit_price || 0),
         quantity: row.quantity,
+        lineTotal: Number(row.line_total || 0),
         productImagePath: row.product_image_path,
         traderId: row.trader_id,
       });
@@ -778,9 +812,19 @@ export async function cancelMyOrder(req, res) {
 
 export async function markMyOrderReceived(req, res) {
   const orderId = Number(req.params.orderId);
+  const rating = Number(req.body?.rating);
+  const review = String(req.body?.review || '').trim();
 
   if (!Number.isInteger(orderId) || orderId <= 0) {
     return res.status(400).json({ error: 'Invalid order ID.' });
+  }
+
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    return res.status(400).json({ error: 'rating must be a whole number from 1 to 5.' });
+  }
+
+  if (review.length > 600) {
+    return res.status(400).json({ error: 'review must be 600 characters or less.' });
   }
 
   try {
@@ -794,12 +838,22 @@ export async function markMyOrderReceived(req, res) {
       return res.status(400).json({ error: 'Only to_receive orders can be completed.' });
     }
 
-    const affectedRows = await updateOrderStatusByBuyerId(req.auth.id, orderId, 'completed');
+    const affectedRows = await completeOrderWithRatingByBuyerId(
+      req.auth.id,
+      orderId,
+      rating,
+      review || null
+    );
     if (!affectedRows) {
       return res.status(404).json({ error: 'Order not found.' });
     }
 
-    return res.status(200).json({ message: 'Order marked as received. Transaction completed.' });
+    return res.status(200).json({
+      message: 'Order marked as received. Transaction completed.',
+      rating,
+      review: review || '',
+      ratedAt: new Date().toISOString(),
+    });
   } catch {
     return res.status(500).json({ error: 'Could not complete order.' });
   }

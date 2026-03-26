@@ -281,9 +281,10 @@ export function cancelMyOrder(orderId, cancellationReason) {
   });
 }
 
-export function markMyOrderReceived(orderId) {
+export function markMyOrderReceived(orderId, payload = {}) {
   return request(`/api/trader/orders/${orderId}/received`, {
     method: 'PATCH',
+    body: JSON.stringify(payload || {}),
   }, {
     successMessage: 'Order marked as received.',
   });

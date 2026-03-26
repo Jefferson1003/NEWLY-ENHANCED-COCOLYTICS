@@ -8,16 +8,18 @@ export async function createProduct(payload) {
         product_name,
         size,
         length_cm,
+        unit_price,
         stock_quantity,
         product_image_path
       )
-      VALUES (?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `,
     [
       payload.traderId,
       String(payload.productName || '').trim(),
       payload.size,
       payload.lengthCm,
+      payload.productPrice,
       payload.stockQuantity,
       payload.productImagePath || null,
     ]
@@ -35,6 +37,7 @@ export async function findProductsByTraderId(traderId) {
         product_name,
         size,
         length_cm,
+        unit_price,
         stock_quantity,
         product_image_path,
         created_at,
@@ -58,6 +61,7 @@ export async function findProductByIdAndTraderId(productId, traderId) {
         product_name,
         size,
         length_cm,
+        unit_price,
         stock_quantity,
         product_image_path,
         created_at,
@@ -80,6 +84,7 @@ export async function updateProductByIdAndTraderId(productId, traderId, payload)
         product_name = ?,
         size = ?,
         length_cm = ?,
+        unit_price = ?,
         stock_quantity = ?,
         product_image_path = COALESCE(?, product_image_path)
       WHERE id = ? AND trader_id = ?
@@ -88,6 +93,7 @@ export async function updateProductByIdAndTraderId(productId, traderId, payload)
       String(payload.productName || '').trim(),
       payload.size,
       payload.lengthCm,
+      payload.productPrice,
       payload.stockQuantity,
       payload.productImagePath || null,
       productId,
@@ -105,6 +111,7 @@ export function sanitizeProduct(product) {
     productName: product.product_name,
     size: product.size,
     lengthCm: product.length_cm,
+    productPrice: Number(product.unit_price || 0),
     stockQuantity: product.stock_quantity,
     productImagePath: product.product_image_path,
     createdAt: product.created_at,

@@ -45,6 +45,27 @@ function sanitizeTraderRows(rows) {
       return {
         ...trader,
         products,
+        totalSoldQuantity: products.reduce((sum, product) => sum + Number(product.totalSoldQuantity || 0), 0),
+        averageRating: (() => {
+          const weighted = products.reduce((acc, product) => {
+            const rating = Number(product.averageRating || 0);
+            const ratingCount = Number(product.ratingCount || 0);
+            if (ratingCount <= 0 || !Number.isFinite(rating)) {
+              return acc;
+            }
+
+            return {
+              ratingTotal: acc.ratingTotal + (rating * ratingCount),
+              countTotal: acc.countTotal + ratingCount,
+            };
+          }, { ratingTotal: 0, countTotal: 0 });
+
+          if (!weighted.countTotal) {
+            return null;
+          }
+
+          return Number((weighted.ratingTotal / weighted.countTotal).toFixed(1));
+        })(),
       };
     })
     .filter((trader) => (trader.products || []).length > 0);
@@ -53,6 +74,15 @@ function sanitizeTraderRows(rows) {
 function toImageUrl(path) {
   if (!path) return '';
   return toMediaUrl(path);
+}
+
+function formatCurrency(value) {
+  return new Intl.NumberFormat('en-PH', {
+    style: 'currency',
+    currency: 'PHP',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(value || 0));
 }
 
 function messageTrader(trader) {
@@ -337,6 +367,11 @@ onMounted(loadMarketplace);
 
           <p class="desc">{{ trader.description || 'No description yet.' }}</p>
           <p class="meta">Total Products: {{ trader.totalProducts }}</p>
+          <p class="meta">Total Sold: {{ trader.totalSoldQuantity || 0 }}</p>
+          <p class="meta">
+            Average Rating:
+            {{ trader.averageRating ? `${trader.averageRating}/5` : 'No ratings yet' }}
+          </p>
           <p class="meta">Contact: {{ trader.contactNumber || 'N/A' }}</p>
           <p class="meta">Address: {{ trader.businessAddress || 'N/A' }}</p>
 
@@ -352,6 +387,12 @@ onMounted(loadMarketplace);
                 <h4>{{ product.productName }}</h4>
                 <p>Size: {{ product.size }}</p>
                 <p>Length: {{ product.lengthCm ?? 'N/A' }} cm</p>
+                <p>Price: {{ formatCurrency(product.productPrice) }}</p>
+                <p>Total Sold: {{ Number(product.totalSoldQuantity || 0) }}</p>
+                <p>
+                  Avg Rating:
+                  {{ product.averageRating ? `${Number(product.averageRating).toFixed(1)}/5` : 'No ratings yet' }}
+                </p>
                 <button type="button" class="cart-btn" @click.stop="openProductModal(product, trader)">
                   View Product
                 </button>
@@ -399,6 +440,12 @@ onMounted(loadMarketplace);
             <p>Trader: {{ selectedTraderName }}</p>
             <p>Size: {{ selectedProduct.size }}</p>
             <p>Length: {{ selectedProduct.lengthCm ?? 'N/A' }} cm</p>
+            <p>Price: {{ formatCurrency(selectedProduct.productPrice) }}</p>
+            <p>Total Sold: {{ Number(selectedProduct.totalSoldQuantity || 0) }}</p>
+            <p>
+              Average Rating:
+              {{ selectedProduct.averageRating ? `${Number(selectedProduct.averageRating).toFixed(1)}/5` : 'No ratings yet' }}
+            </p>
             <p class="stock-left">Stocks Left: {{ selectedProduct.stockQuantity }}</p>
 
             <div class="qty-controls">
