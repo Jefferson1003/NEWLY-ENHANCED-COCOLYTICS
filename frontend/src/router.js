@@ -7,6 +7,8 @@ import AdminManageUsersPage from './pages/admin/AdminManageUsersPage.vue';
 import AdminStaffApplicationsPage from './pages/admin/AdminStaffApplicationsPage.vue';
 import AdminArchivedUsersPage from './pages/admin/AdminArchivedUsersPage.vue';
 import ClientDashboard from './pages/client/ClientDashboard.vue';
+import ClientHomePage from './pages/client/ClientHomePage.vue';
+import ClientTermsPage from './pages/client/ClientTermsPage.vue';
 import TraderDashboard from './pages/trader/TraderDashboard.vue';
 import TraderHomePage from './pages/trader/TraderHomePage.vue';
 import TraderProfilePage from './pages/trader/TraderProfilePage.vue';
@@ -64,7 +66,16 @@ const router = createRouter({
         },
       ],
     },
-    { path: '/client', name: 'client', component: ClientDashboard, meta: { auth: true, role: 'client' } },
+    {
+      path: '/client',
+      component: ClientDashboard,
+      meta: { auth: true, role: 'client' },
+      children: [
+        { path: '', redirect: { name: 'client-dashboard' } },
+        { path: 'dashboard', name: 'client-dashboard', component: ClientHomePage },
+        { path: 'terms', name: 'client-terms', component: ClientTermsPage },
+      ],
+    },
     {
       path: '/trader',
       component: TraderDashboard,
@@ -96,7 +107,7 @@ router.beforeEach((to) => {
     const user = getUser();
     if (user?.role === 'admin') return { name: 'admin-dashboard' };
     if (user?.role === 'trader' || user?.status === 'trader') return { name: 'trader-dashboard' };
-    return { name: 'client' };
+    return { name: 'client-dashboard' };
   }
 
   if (!to.meta.auth) {
@@ -121,7 +132,7 @@ router.beforeEach((to) => {
   if (allowedRoles.length && !allowedRoles.includes(user.role)) {
     if (user.role === 'admin') return { name: 'admin-dashboard' };
     if (user.role === 'trader') return { name: 'trader-dashboard' };
-    return { name: 'client' };
+    return { name: 'client-dashboard' };
   }
 
   return true;

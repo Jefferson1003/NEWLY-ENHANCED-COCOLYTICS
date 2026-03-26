@@ -1,16 +1,16 @@
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import ClientSidebar from '../../components/ClientSidebar.vue';
 import ConfirmationModal from '../../components/ConfirmationModal.vue';
-import { acceptTraderRole, fetchMe } from '../../services/api';
+import { fetchMe } from '../../services/api';
 import { clearSession, saveSession, getToken } from '../../services/session';
 
 const router = useRouter();
 const profile = ref(null);
 const feedback = ref('');
-const loading = ref(true);
+const sidebarOpen = ref(false);
 const showLogoutConfirm = ref(false);
-const showAcceptTraderConfirm = ref(false);
 let pollTimer;
 
 function logout() {
@@ -42,33 +42,15 @@ async function loadProfile() {
     }
   } catch (error) {
     feedback.value = error.message;
-  } finally {
-    loading.value = false;
   }
 }
 
-async function applyAsTrader() {
-  feedback.value = '';
-  try {
-    const result = await acceptTraderRole();
-    feedback.value = result.message;
-    await loadProfile();
-  } catch (error) {
-    feedback.value = error.message;
-  }
+function toggleSidebar() {
+  sidebarOpen.value = !sidebarOpen.value;
 }
 
-function requestAcceptTrader() {
-  showAcceptTraderConfirm.value = true;
-}
-
-function cancelAcceptTrader() {
-  showAcceptTraderConfirm.value = false;
-}
-
-async function confirmAcceptTrader() {
-  showAcceptTraderConfirm.value = false;
-  await applyAsTrader();
+function closeSidebar() {
+  sidebarOpen.value = false;
 }
 
 onMounted(async () => {
@@ -84,33 +66,33 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="client-page">
-    <header class="client-top">
-      <div>
-        <p class="kicker">Client Center</p>
-        <h1>Welcome, {{ profile?.fullName || 'Client' }}</h1>
-      </div>
-      <button class="logout" @click="requestLogout">Logout</button>
-    </header>
+  <section class="client-layout">
+    <ClientSidebar
+      :user-name="profile?.fullName || 'Client'"
+      :user-email="profile?.email || ''"
+      :is-open="sidebarOpen"
+      @logout="requestLogout"
+      @close="closeSidebar"
+    />
 
-    <article class="status-card" v-if="!loading">
-      <p><strong>Email:</strong> {{ profile?.email }}</p>
-      <p><strong>Status:</strong> {{ profile?.status }}</p>
-      <p><strong>Role:</strong> {{ profile?.role }}</p>
+    <button
+      v-if="!sidebarOpen"
+      :class="['toggle', { open: sidebarOpen }]"
+      type="button"
+      aria-label="Toggle sidebar"
+      @click="toggleSidebar"
+    >
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
 
-      <button
-        v-if="profile?.status === 'accepted_client'"
-        class="staff-btn"
-        @click="requestAcceptTrader"
-      >
-        Accept as Trader
-      </button>
+    <div v-if="sidebarOpen" class="overlay" @click="closeSidebar"></div>
 
-      <p v-if="profile?.status === 'trader'" class="note">Your account is now upgraded as trader.</p>
-      <p v-if="profile?.status === 'pending_client'" class="note">Your client account is still pending admin approval.</p>
-    </article>
-
-    <p v-if="feedback" class="feedback">{{ feedback }}</p>
+    <main class="client-page">
+      <p v-if="feedback" class="feedback">{{ feedback }}</p>
+      <router-view />
+    </main>
 
     <ConfirmationModal
       :visible="showLogoutConfirm"
@@ -122,73 +104,65 @@ onUnmounted(() => {
       @confirm="confirmLogout"
       @cancel="cancelLogout"
     />
-
-    <ConfirmationModal
-      :visible="showAcceptTraderConfirm"
-      title="Confirm Trader Upgrade"
-      message="Do you want to accept and become a trader now?"
-      confirm-label="Yes, Become Trader"
-      cancel-label="Cancel"
-      @confirm="confirmAcceptTrader"
-      @cancel="cancelAcceptTrader"
-    />
   </section>
 </template>
 
 <style scoped>
-.client-page {
+.client-layout {
   min-height: 100vh;
+  background: #071c24;
+  position: relative;
+  overflow: hidden;
+}
+
+.client-page {
   padding: 1rem;
+  padding-top: 3.2rem;
   color: #edfff6;
 }
 
-.client-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.kicker {
-  margin: 0;
-  text-transform: uppercase;
-  letter-spacing: 0.15em;
-  font-size: 0.7rem;
-  color: #96f7ce;
-}
-
-h1 {
-  margin: 0.45rem 0 0;
-  font-size: 1.4rem;
-}
-
-.logout,
-.staff-btn {
-  border: 1px solid rgba(125, 235, 196, 0.42);
+.toggle {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  position: fixed;
+  top: 0.85rem;
+  left: 0.85rem;
+  z-index: 35;
+  border: 1px solid rgba(151, 233, 255, 0.46);
   border-radius: 10px;
-  background: rgba(13, 57, 71, 0.72);
-  color: #effff7;
-  padding: 0.55rem 0.78rem;
-  font-weight: 700;
+  background: rgba(13, 49, 60, 0.95);
+  color: #e7fcff;
+  width: 38px;
+  height: 34px;
+  padding: 0.35rem;
 }
 
-.status-card {
-  margin-top: 1rem;
-  border: 1px solid rgba(111, 214, 176, 0.35);
-  border-radius: 18px;
-  background: linear-gradient(160deg, rgba(8, 35, 46, 0.88), rgba(10, 57, 72, 0.68));
-  padding: 1rem;
-  display: grid;
-  gap: 0.65rem;
-}
-
-.note {
-  margin: 0;
-  color: #bff6dd;
-  font-size: 0.83rem;
+.toggle span {
+  display: block;
+  width: 100%;
+  height: 2px;
+  border-radius: 999px;
+  background: #e7fcff;
 }
 
 .feedback {
-  margin-top: 0.8rem;
-  color: #8aeec4;
+  margin: 0 0 0.8rem;
+  color: #ffbfca;
+}
+
+.overlay {
+  display: block;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 25;
+}
+
+@media (max-width: 820px) {
+  .client-page {
+    padding-top: 3.2rem;
+  }
 }
 </style>
