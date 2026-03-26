@@ -256,16 +256,95 @@ async function submitForm() {
           </label>
           <label>
             <span>Password</span>
-            <input v-model="password" :type="showPassword ? 'text' : 'password'" placeholder="Enter password" required />
+            <div class="password-field">
+              <input
+                v-model="password"
+                :type="showPassword ? 'text' : 'password'"
+                placeholder="Enter password"
+                required
+              />
+              <button
+                type="button"
+                class="password-toggle"
+                :aria-label="showPassword ? 'Hide password' : 'Show password'"
+                @click="showPassword = !showPassword"
+              >
+                <svg v-if="showPassword" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M3 4.5L19.5 21M9.9 9.9A3 3 0 0014.1 14.1M10.7 5.1A11 11 0 0112 5c5.7 0 9.6 5.1 10 6-.2.4-1.1 2-2.8 3.5M6.6 6.6C3.7 8.3 2.1 10.8 2 11c.4.9 4.3 6 10 6 1.4 0 2.8-.3 4.1-.8"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                <svg v-else viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M2 12c.4-.9 4.3-6 10-6s9.6 5.1 10 6c-.4.9-4.3 6-10 6S2.4 12.9 2 12z"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="3"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                  />
+                </svg>
+              </button>
+            </div>
           </label>
           <label>
             <span>Confirm Password</span>
-            <input
-              v-model="confirmPassword"
-              :type="showPassword ? 'text' : 'password'"
-              placeholder="Confirm password"
-              required
-            />
+            <div class="password-field">
+              <input
+                v-model="confirmPassword"
+                :type="showPassword ? 'text' : 'password'"
+                placeholder="Confirm password"
+                required
+              />
+              <button
+                type="button"
+                class="password-toggle"
+                :aria-label="showPassword ? 'Hide password' : 'Show password'"
+                @click="showPassword = !showPassword"
+              >
+                <svg v-if="showPassword" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M3 4.5L19.5 21M9.9 9.9A3 3 0 0014.1 14.1M10.7 5.1A11 11 0 0112 5c5.7 0 9.6 5.1 10 6-.2.4-1.1 2-2.8 3.5M6.6 6.6C3.7 8.3 2.1 10.8 2 11c.4.9 4.3 6 10 6 1.4 0 2.8-.3 4.1-.8"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                <svg v-else viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M2 12c.4-.9 4.3-6 10-6s9.6 5.1 10 6c-.4.9-4.3 6-10 6S2.4 12.9 2 12z"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="3"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                  />
+                </svg>
+              </button>
+            </div>
           </label>
           <label>
             <span>Why do you want to become a staff?</span>
@@ -285,7 +364,49 @@ async function submitForm() {
           </label>
           <label>
             <span>Password</span>
-            <input v-model="password" :type="showPassword ? 'text' : 'password'" placeholder="Enter password" required />
+            <div class="password-field">
+              <input
+                v-model="password"
+                :type="showPassword ? 'text' : 'password'"
+                placeholder="Enter password"
+                required
+              />
+              <button
+                type="button"
+                class="password-toggle"
+                :aria-label="showPassword ? 'Hide password' : 'Show password'"
+                @click="showPassword = !showPassword"
+              >
+                <svg v-if="showPassword" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M3 4.5L19.5 21M9.9 9.9A3 3 0 0014.1 14.1M10.7 5.1A11 11 0 0112 5c5.7 0 9.6 5.1 10 6-.2.4-1.1 2-2.8 3.5M6.6 6.6C3.7 8.3 2.1 10.8 2 11c.4.9 4.3 6 10 6 1.4 0 2.8-.3 4.1-.8"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                <svg v-else viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M2 12c.4-.9 4.3-6 10-6s9.6 5.1 10 6c-.4.9-4.3 6-10 6S2.4 12.9 2 12z"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="3"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                  />
+                </svg>
+              </button>
+            </div>
           </label>
         </template>
 
@@ -338,11 +459,6 @@ async function submitForm() {
             />
           </label>
         </template>
-
-        <label class="show-password" v-if="mode !== 'forgot-email' && mode !== 'forgot-otp'">
-          <input v-model="showPassword" type="checkbox" />
-          <span>Show password fields</span>
-        </label>
 
         <button class="submit" type="submit" :disabled="loading">
           <span v-if="loading">Please wait...</span>
@@ -469,21 +585,42 @@ textarea {
   resize: vertical;
 }
 
-.show-password {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
+.password-field {
+  position: relative;
 }
 
-.show-password input[type='checkbox'] {
-  width: 0.95rem;
-  height: 0.95rem;
-  accent-color: #7be6bc;
+.password-field input {
+  padding-right: 2.5rem;
 }
 
-.show-password span {
-  font-size: 0.78rem;
-  color: #d2ffe8;
+.password-toggle {
+  position: absolute;
+  right: 0.45rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1.8rem;
+  height: 1.8rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #a4f4d3;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.password-toggle svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.password-toggle:hover {
+  background: rgba(117, 227, 189, 0.14);
+}
+
+.password-toggle:focus-visible {
+  outline: 2px solid rgba(151, 243, 204, 0.7);
+  outline-offset: 1px;
 }
 
 .submit {
