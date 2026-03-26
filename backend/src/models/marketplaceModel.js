@@ -313,6 +313,7 @@ export async function listOrdersByBuyerId(buyerId) {
       SELECT
         o.id AS order_id,
         o.status,
+        o.dispatch_date,
         o.customer_full_name,
         o.customer_contact_number,
         o.delivery_region,
@@ -352,6 +353,7 @@ export async function listSalesOrderItemsByTraderId(traderId) {
       SELECT
         o.id AS order_id,
         o.status,
+        o.dispatch_date,
         o.customer_full_name,
         o.customer_contact_number,
         o.delivery_region,
@@ -405,10 +407,15 @@ export async function updateSalesOrderStatusByTraderId(traderId, orderId, status
     `
       UPDATE orders o
       INNER JOIN order_items oi ON oi.order_id = o.id
-      SET o.status = ?
+      SET
+        o.status = ?,
+        o.dispatch_date = CASE
+          WHEN ? = 'to_ship' THEN COALESCE(o.dispatch_date, NOW())
+          ELSE o.dispatch_date
+        END
       WHERE o.id = ? AND oi.trader_id = ?
     `,
-    [status, orderId, traderId]
+    [status, status, orderId, traderId]
   );
 
   return result.affectedRows;

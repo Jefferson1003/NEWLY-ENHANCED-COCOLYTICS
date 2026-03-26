@@ -299,7 +299,7 @@ export function updateTraderSalesOrderStatus(orderId, status) {
     body: JSON.stringify({ status }),
   }, {
     successMessage: status === 'to_ship'
-      ? 'Order accepted and marked as To Ship.'
+      ? 'Order dispatched and marked as To Ship.'
       : status === 'to_receive'
         ? 'Order marked as To Receive.'
         : 'Order status updated successfully.',

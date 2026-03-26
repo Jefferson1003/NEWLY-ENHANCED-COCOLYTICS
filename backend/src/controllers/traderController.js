@@ -607,6 +607,7 @@ export async function listOrders(req, res) {
         ordersMap.set(row.order_id, {
           id: row.order_id,
           status: row.status,
+          dispatchDate: row.dispatch_date,
           customerFullName: row.customer_full_name || '',
           customerContactNumber: row.customer_contact_number || '',
           deliveryRegion: row.delivery_region || '',
@@ -653,6 +654,7 @@ export async function listSalesOrders(req, res) {
         ordersMap.set(row.order_id, {
           id: row.order_id,
           status: row.status,
+          dispatchDate: row.dispatch_date,
           buyerName: row.buyer_name || '',
           customerFullName: row.customer_full_name || '',
           customerContactNumber: row.customer_contact_number || '',
@@ -723,7 +725,9 @@ export async function updateSalesOrderStatus(req, res) {
     }
 
     return res.status(200).json({
-      message: 'Order status updated successfully.',
+      message: status === 'to_ship'
+        ? 'Order dispatched and marked as to_ship.'
+        : 'Order status updated successfully.',
       orderId,
       status,
     });

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { fetchTraderSalesOrders, updateTraderSalesOrderStatus } from '../../services/api';
 import { toMediaUrl } from '../../services/media';
 
@@ -9,19 +9,25 @@ const feedback = ref('');
 const activeFilter = ref('all');
 const searchTerm = ref('');
 const updatingOrderIds = ref([]);
+const viewMode = ref('list');
+const dispatchOrderId = ref(null);
+const dispatchNotes = ref('');
+const highlightedOrderId = ref(null);
 const SALES_ORDERS_UPDATED_EVENT = 'cocolytics-sales-orders-updated';
+const FAST_ORDERS_POLL_MS = 2500;
+let ordersPollTimer = null;
 
 function emitSalesOrdersUpdated() {
   window.dispatchEvent(new CustomEvent(SALES_ORDERS_UPDATED_EVENT));
 }
 
+function normalizeStatus(value) {
+  return String(value || '').trim().toLowerCase() || 'unknown';
+}
+
 function toImageUrl(path) {
   if (!path) return '';
   return toMediaUrl(path);
-}
-
-function normalizeStatus(value) {
-  return String(value || '').trim().toLowerCase() || 'unknown';
 }
 
 function formatStatus(value) {
@@ -32,7 +38,30 @@ function formatStatus(value) {
 }
 
 function formatOrderDate(value) {
+  if (!value) return '-';
   return new Date(value).toLocaleString();
+}
+
+function formatDispatchDate(value) {
+  if (!value) return '-';
+  return new Date(value).toLocaleString();
+}
+
+function fullAddress(order) {
+  const direct = String(order?.deliveryFullAddress || '').trim();
+  if (direct) return direct;
+
+  const parts = [
+    order?.deliveryStreetAddress,
+    order?.deliveryBarangay,
+    order?.deliveryCity,
+    order?.deliveryProvince,
+    order?.deliveryRegion,
+  ]
+    .map((part) => String(part || '').trim())
+    .filter(Boolean);
+
+  return parts.length ? parts.join(', ') : '-';
 }
 
 function isUpdating(orderId) {
@@ -50,19 +79,85 @@ function setUpdating(orderId, updating) {
   updatingOrderIds.value = updatingOrderIds.value.filter((id) => id !== orderId);
 }
 
-async function loadOrders() {
-  loading.value = true;
-  feedback.value = '';
+async function loadOrders(options = {}) {
+  const { silent = false, emitEvent = true } = options;
+
+  if (!silent) {
+    loading.value = true;
+    feedback.value = '';
+  }
+
   try {
     const data = await fetchTraderSalesOrders();
     orders.value = data.orders || [];
-    emitSalesOrdersUpdated();
+    if (emitEvent) {
+      emitSalesOrdersUpdated();
+    }
   } catch (error) {
-    feedback.value = error.message;
+    if (!silent) {
+      feedback.value = error.message;
+    }
   } finally {
-    loading.value = false;
+    if (!silent) {
+      loading.value = false;
+    }
   }
 }
+
+function startOrdersRealtimePolling() {
+  if (ordersPollTimer) {
+    clearInterval(ordersPollTimer);
+    ordersPollTimer = null;
+  }
+
+  ordersPollTimer = setInterval(() => {
+    if (document.visibilityState !== 'visible') {
+      return;
+    }
+
+    if (updatingOrderIds.value.length > 0) {
+      return;
+    }
+
+    loadOrders({ silent: true, emitEvent: false });
+  }, FAST_ORDERS_POLL_MS);
+}
+
+function stopOrdersRealtimePolling() {
+  if (ordersPollTimer) {
+    clearInterval(ordersPollTimer);
+    ordersPollTimer = null;
+  }
+}
+
+function openDispatchForm(order) {
+  const orderId = Number(order?.id || 0);
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    feedback.value = 'Invalid order selected.';
+    return;
+  }
+
+  if (normalizeStatus(order.status) !== 'pending') {
+    feedback.value = 'Only pending orders can be dispatched.';
+    return;
+  }
+
+  dispatchOrderId.value = orderId;
+  dispatchNotes.value = '';
+  viewMode.value = 'dispatch';
+}
+
+function closeDispatchForm() {
+  viewMode.value = 'list';
+  dispatchOrderId.value = null;
+  dispatchNotes.value = '';
+}
+
+const selectedDispatchOrder = computed(() => {
+  const id = Number(dispatchOrderId.value || 0);
+  if (!Number.isInteger(id) || id <= 0) return null;
+  return orders.value.find((order) => Number(order.id) === id) || null;
+});
 
 async function markOrderToReceive(order) {
   const orderId = Number(order?.id || 0);
@@ -79,7 +174,7 @@ async function markOrderToReceive(order) {
   setUpdating(orderId, true);
   try {
     await updateTraderSalesOrderStatus(orderId, 'to_receive');
-    order.status = 'to_receive';
+    await loadOrders();
     emitSalesOrdersUpdated();
   } catch (error) {
     feedback.value = error.message;
@@ -88,7 +183,7 @@ async function markOrderToReceive(order) {
   }
 }
 
-async function acceptAndShipOrder(order) {
+async function dispatchOrder(order) {
   const orderId = Number(order?.id || 0);
   if (!Number.isInteger(orderId) || orderId <= 0) {
     feedback.value = 'Invalid order selected.';
@@ -103,7 +198,10 @@ async function acceptAndShipOrder(order) {
   setUpdating(orderId, true);
   try {
     await updateTraderSalesOrderStatus(orderId, 'to_ship');
-    order.status = 'to_ship';
+    await loadOrders();
+    activeFilter.value = 'to_ship';
+    highlightedOrderId.value = orderId;
+    closeDispatchForm();
     emitSalesOrdersUpdated();
   } catch (error) {
     feedback.value = error.message;
@@ -173,7 +271,14 @@ const filteredOrders = computed(() => {
 const filteredCount = computed(() => filteredOrders.value.length);
 const totalCount = computed(() => orders.value.length);
 
-onMounted(loadOrders);
+onMounted(() => {
+  loadOrders();
+  startOrdersRealtimePolling();
+});
+
+onUnmounted(() => {
+  stopOrdersRealtimePolling();
+});
 </script>
 
 <template>
@@ -186,8 +291,92 @@ onMounted(loadOrders);
 
     <p v-if="feedback" class="feedback">{{ feedback }}</p>
 
-    <section class="list-panel">
-      <p class="count-line">Showing {{ filteredCount }} of {{ totalCount }} orders</p>
+    <section v-if="viewMode === 'dispatch'" class="list-panel dispatch-panel">
+      <header class="dispatch-head">
+        <h2>Dispatch Form</h2>
+        <button type="button" class="action-btn ghost" @click="closeDispatchForm">Back to Manage Orders</button>
+      </header>
+
+      <p v-if="!selectedDispatchOrder" class="muted">Selected order is no longer available.</p>
+
+      <template v-else>
+        <div class="dispatch-grid">
+          <label class="dispatch-label">
+            Order Number
+            <input class="dispatch-input" type="text" :value="`#${selectedDispatchOrder.id}`" readonly />
+          </label>
+          <label class="dispatch-label">
+            Name
+            <input class="dispatch-input" type="text" :value="selectedDispatchOrder.customerFullName || '-'" readonly />
+          </label>
+          <label class="dispatch-label">
+            Contact Number
+            <input class="dispatch-input" type="text" :value="selectedDispatchOrder.customerContactNumber || '-'" readonly />
+          </label>
+          <label class="dispatch-label">
+            Address
+            <textarea class="dispatch-input" rows="3" readonly :value="fullAddress(selectedDispatchOrder)"></textarea>
+          </label>
+          <label class="dispatch-label">
+            Notes
+            <textarea class="dispatch-input" rows="2" readonly :value="selectedDispatchOrder.deliveryNotes || '-'"></textarea>
+          </label>
+        </div>
+
+        <section class="dispatch-items">
+          <h3>Order Items</h3>
+          <article
+            v-for="item in selectedDispatchOrder.items"
+            :key="item.id"
+            class="order-item-row"
+          >
+            <img
+              v-if="item.productImagePath"
+              :src="toImageUrl(item.productImagePath)"
+              alt="Product"
+              class="cart-image"
+            />
+            <div v-else class="cart-image placeholder">No Image</div>
+
+            <div class="cart-content">
+              <p class="order-product">{{ item.productName || '-' }}</p>
+              <p class="desc-line">Product Type: {{ item.size || 'N/A' }}</p>
+            </div>
+
+            <div class="cart-right">
+              <p class="order-qty">Quantity: {{ item.quantity ?? '-' }}</p>
+            </div>
+          </article>
+        </section>
+
+        <label class="dispatch-label">
+          Dispatch Field / Textbox
+          <textarea
+            class="dispatch-input"
+            v-model="dispatchNotes"
+            rows="4"
+            maxlength="500"
+            placeholder="Add dispatch note (optional)"
+          ></textarea>
+        </label>
+
+        <div class="dispatch-actions">
+          <button
+            type="button"
+            class="action-btn"
+            :disabled="isUpdating(selectedDispatchOrder.id)"
+            @click="dispatchOrder(selectedDispatchOrder)"
+          >
+            {{ isUpdating(selectedDispatchOrder.id) ? 'Dispatching...' : 'Dispatch' }}
+          </button>
+        </div>
+      </template>
+    </section>
+
+    <section v-else class="list-panel">
+      <p class="count-line">
+        Showing {{ filteredCount }} of {{ totalCount }} orders
+      </p>
 
       <label class="search-wrap">
         <span>Search Orders</span>
@@ -216,41 +405,48 @@ onMounted(loadOrders);
       <p v-else-if="!filteredCount" class="muted">No matching orders found.</p>
 
       <div v-else class="orders-cards">
-        <article v-for="order in filteredOrders" :key="order.id" class="order-card">
+        <article
+          v-for="order in filteredOrders"
+          :key="order.id"
+          :class="['order-card', { highlighted: Number(order.id) === Number(highlightedOrderId) }]"
+        >
           <header class="order-head">
             <div>
-              <h2>Order #{{ order.id }}</h2>
+              <h3>Order #{{ order.id }}</h3>
               <p>{{ formatOrderDate(order.createdAt) }}</p>
+              <p class="cell-sub">Buyer: {{ order.buyerName || '-' }}</p>
             </div>
             <span class="badge">{{ formatStatus(order.status) }}</span>
           </header>
 
-          <section class="order-meta">
-            <p><strong>Buyer:</strong> {{ order.buyerName || '-' }}</p>
-            <p><strong>Full Name:</strong> {{ order.customerFullName || '-' }}</p>
-            <p><strong>Contact:</strong> {{ order.customerContactNumber || '-' }}</p>
-            <p><strong>Address:</strong> {{ order.deliveryFullAddress || '-' }}</p>
-            <p><strong>Payment:</strong> {{ order.paymentMethod || 'cash_on_delivery' }}</p>
-            <p><strong>Delivery Notes:</strong> {{ order.deliveryNotes || '-' }}</p>
-          </section>
+          <div class="order-meta">
+            <p><strong>Name:</strong> {{ order.customerFullName || '-' }}</p>
+            <p><strong>Contact Number:</strong> {{ order.customerContactNumber || '-' }}</p>
+            <p><strong>Address:</strong> {{ fullAddress(order) }}</p>
+            <p><strong>Dispatch Date:</strong> {{ formatDispatchDate(order.dispatchDate) }}</p>
+            <p><strong>Notes:</strong> {{ order.deliveryNotes || '-' }}</p>
+          </div>
 
-          <section class="order-items">
-            <article v-for="item in order.items" :key="item.id" class="order-item-card">
+          <div class="order-items">
+            <article v-for="item in order.items" :key="item.id" class="order-item-row">
               <img
                 v-if="item.productImagePath"
                 :src="toImageUrl(item.productImagePath)"
                 alt="Product"
-                class="item-image"
+                class="cart-image"
               />
-              <div v-else class="item-image placeholder">No Image</div>
+              <div v-else class="cart-image placeholder">No Image</div>
 
-              <div class="item-content">
-                <h3>{{ item.productName }}</h3>
-                <p>Size: {{ item.size || 'N/A' }} | Length: {{ item.lengthCm ?? 'N/A' }} cm</p>
-                <p class="qty">Qty: {{ item.quantity }}</p>
+              <div class="cart-content">
+                <p class="order-product">{{ item.productName || '-' }}</p>
+                <p class="desc-line">Product Type: {{ item.size || 'N/A' }}</p>
+              </div>
+
+              <div class="cart-right">
+                <p class="order-qty">Quantity: {{ item.quantity ?? '-' }}</p>
               </div>
             </article>
-          </section>
+          </div>
 
           <div class="order-actions">
             <button
@@ -258,19 +454,20 @@ onMounted(loadOrders);
               type="button"
               class="action-btn"
               :disabled="isUpdating(order.id)"
-              @click="acceptAndShipOrder(order)"
+              @click="openDispatchForm(order)"
             >
-              {{ isUpdating(order.id) ? 'Updating...' : 'Accept and Ship' }}
+              {{ isUpdating(order.id) ? 'Updating...' : 'Dispatch' }}
             </button>
             <button
-              v-if="normalizeStatus(order.status) === 'to_ship'"
+              v-else-if="normalizeStatus(order.status) === 'to_ship'"
               type="button"
               class="action-btn"
               :disabled="isUpdating(order.id)"
               @click="markOrderToReceive(order)"
             >
-              {{ isUpdating(order.id) ? 'Updating...' : 'Mark as To Receive' }}
+              {{ isUpdating(order.id) ? 'Updating...' : 'Mark To Receive' }}
             </button>
+            <span v-else class="muted">No action</span>
           </div>
         </article>
       </div>
@@ -369,11 +566,70 @@ onMounted(loadOrders);
   gap: 0.75rem;
 }
 
+.dispatch-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.dispatch-head h2 {
+  margin: 0;
+}
+
+.dispatch-grid {
+  margin-top: 0.65rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.dispatch-label {
+  display: grid;
+  gap: 0.3rem;
+  color: #d9fff1;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.dispatch-input {
+  width: 100%;
+  border: 1px solid rgba(133, 229, 197, 0.45);
+  border-radius: 10px;
+  background: rgba(5, 27, 37, 0.75);
+  color: #ecfff7;
+  padding: 0.58rem 0.65rem;
+  font: inherit;
+  resize: vertical;
+}
+
+.dispatch-input[readonly] {
+  cursor: default;
+}
+
+.dispatch-items {
+  margin-top: 0.75rem;
+}
+
+.dispatch-items h3 {
+  margin: 0 0 0.45rem;
+}
+
+.dispatch-actions {
+  margin-top: 0.7rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
 .order-card {
   border: 1px solid rgba(126, 223, 192, 0.32);
   border-radius: 14px;
   background: rgba(5, 26, 36, 0.72);
   padding: 0.75rem;
+}
+
+.order-card.highlighted {
+  border-color: rgba(255, 240, 148, 0.9);
+  box-shadow: 0 0 0 2px rgba(255, 240, 148, 0.45);
 }
 
 .order-head {
@@ -383,9 +639,9 @@ onMounted(loadOrders);
   align-items: center;
 }
 
-.order-head h2 {
+.order-head h3 {
   margin: 0;
-  font-size: 1.08rem;
+  font-size: 1rem;
 }
 
 .order-head p {
@@ -394,7 +650,14 @@ onMounted(loadOrders);
   font-size: 0.8rem;
 }
 
+.cell-sub {
+  margin: 0.15rem 0 0;
+  color: #c3f7e3;
+  font-size: 0.74rem;
+}
+
 .badge {
+  display: inline-block;
   border-radius: 999px;
   border: 1px solid rgba(133, 229, 197, 0.45);
   background: rgba(30, 86, 69, 0.72);
@@ -427,17 +690,17 @@ onMounted(loadOrders);
   gap: 0.45rem;
 }
 
-.order-item-card {
+.order-item-row {
   border: 1px solid rgba(126, 223, 192, 0.22);
   border-radius: 10px;
   padding: 0.5rem;
   display: grid;
-  grid-template-columns: 66px 1fr;
+  grid-template-columns: 66px 1fr auto;
   gap: 0.55rem;
   align-items: center;
 }
 
-.item-image {
+.cart-image {
   width: 66px;
   height: 66px;
   object-fit: cover;
@@ -445,33 +708,46 @@ onMounted(loadOrders);
   border: 1px solid rgba(131, 236, 200, 0.35);
 }
 
-.item-image.placeholder {
+.cart-image.placeholder {
   display: grid;
   place-items: center;
   color: #d5fff0;
   background: rgba(5, 27, 37, 0.75);
 }
 
-.item-content h3 {
+.cart-content {
+  min-width: 0;
+}
+
+.order-product {
   margin: 0;
   color: #e6fff4;
+  font-weight: 800;
   font-size: 0.92rem;
 }
 
-.item-content p {
+.desc-line {
   margin: 0.2rem 0 0;
   color: #d2ffef;
   font-size: 0.82rem;
 }
 
-.item-content .qty {
+.cart-right {
+  justify-self: end;
+}
+
+.order-qty {
+  margin: 0;
   font-weight: 800;
+  color: #dcfff2;
 }
 
 .order-actions {
   margin-top: 0.6rem;
   display: flex;
   justify-content: flex-end;
+  gap: 0.45rem;
+  align-items: center;
 }
 
 .action-btn {
@@ -484,19 +760,27 @@ onMounted(loadOrders);
   cursor: pointer;
 }
 
+.action-btn.ghost {
+  background: rgba(5, 27, 37, 0.75);
+}
+
 .action-btn:disabled {
   opacity: 0.65;
   cursor: not-allowed;
 }
 
 @media (max-width: 560px) {
-  .order-item-card {
+  .order-item-row {
     grid-template-columns: 1fr;
   }
 
-  .item-image {
+  .cart-image {
     width: 100%;
     height: 120px;
+  }
+
+  .cart-right {
+    justify-self: start;
   }
 }
 </style>

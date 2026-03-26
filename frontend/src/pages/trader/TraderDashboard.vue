@@ -32,6 +32,8 @@ const isCallRoute = computed(() => route.name === 'trader-call');
 const INVENTORY_UPDATED_EVENT = 'cocolytics-inventory-updated';
 const MESSAGE_UPDATED_EVENT = 'cocolytics-messages-updated';
 const SALES_ORDERS_UPDATED_EVENT = 'cocolytics-sales-orders-updated';
+const FAST_SIDEBAR_POLL_MS = 2500;
+let sidebarOrdersPollTimer = null;
 
 function playIncomingRingBurst() {
   if (!incomingRingAudioContext) {
@@ -226,6 +228,28 @@ async function loadToReceiveCount() {
   }
 }
 
+function startSidebarRealtimePolling() {
+  if (sidebarOrdersPollTimer) {
+    clearInterval(sidebarOrdersPollTimer);
+    sidebarOrdersPollTimer = null;
+  }
+
+  sidebarOrdersPollTimer = setInterval(() => {
+    if (document.visibilityState !== 'visible') {
+      return;
+    }
+
+    loadToReceiveCount();
+  }, FAST_SIDEBAR_POLL_MS);
+}
+
+function stopSidebarRealtimePolling() {
+  if (sidebarOrdersPollTimer) {
+    clearInterval(sidebarOrdersPollTimer);
+    sidebarOrdersPollTimer = null;
+  }
+}
+
 function logout() {
   clearSession();
   router.push('/auth');
@@ -258,6 +282,7 @@ onMounted(() => {
   loadLowStockCount();
   loadUnreadMessagesCount();
   loadToReceiveCount();
+  startSidebarRealtimePolling();
   ensureTraderRealtimeStream();
   unsubscribeCallEvent = subscribeTraderRealtime('chat-call', (rawEvent) => {
     handleIncomingCallEvent(rawEvent).catch((error) => {
@@ -287,6 +312,7 @@ onUnmounted(() => {
   window.removeEventListener(INVENTORY_UPDATED_EVENT, loadLowStockCount);
   window.removeEventListener(MESSAGE_UPDATED_EVENT, loadUnreadMessagesCount);
   window.removeEventListener(SALES_ORDERS_UPDATED_EVENT, loadToReceiveCount);
+  stopSidebarRealtimePolling();
 });
 </script>
 
