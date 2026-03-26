@@ -15,6 +15,7 @@ import { apiInfo, health } from './controllers/systemController.js';
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:7904';
+const allowedOrigins = CLIENT_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const productUploadsDir = path.resolve(__dirname, '../../frontend/public/uploads/products_img');
@@ -27,7 +28,18 @@ app.use(
     crossOriginResourcePolicy: { policy: 'cross-origin' },
   })
 );
-app.use(cors({ origin: CLIENT_ORIGIN }));
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error('Not allowed by CORS'));
+    },
+  })
+);
 app.use(express.json());
 app.use(morgan('dev'));
 app.use('/uploads/products_img', express.static(productUploadsDir));
@@ -35,6 +47,13 @@ app.use('/uploads/profile_img', express.static(profileUploadsDir));
 app.use('/uploads/paper_docs', express.static(paperUploadsDir));
 app.use('/uploads/messenger', express.static(messengerUploadsDir));
 
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Cocolytics backend is running.',
+    api: '/api',
+    health: '/api/health',
+  });
+});
 app.get('/api/health', health);
 app.get('/api', apiInfo);
 app.use('/api/auth', authRouter);
