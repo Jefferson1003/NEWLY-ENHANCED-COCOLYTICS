@@ -101,7 +101,7 @@ const emit = defineEmits(['logout', 'close']);
       <router-link to="/trader/inventory" class="inventory-link" @click="emit('close')">
         <span class="nav-main">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v4H4zm0 6h7v10H4zm9 0h7v10h-7z"/></svg>
-          <span>Inventory</span>
+          <span>Product Stocks</span>
         </span>
         <span v-if="lowStockCount > 0" class="low-stock-badge">{{ lowStockCount }} low</span>
       </router-link>
