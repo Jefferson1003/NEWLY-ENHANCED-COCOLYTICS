@@ -16,6 +16,44 @@ const app = express();
 const PORT = Number(process.env.PORT) || 4000;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:7904';
 const allowedOrigins = CLIENT_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean);
+const explicitOrigins = new Set();
+const wildcardOrigins = [];
+
+for (const origin of allowedOrigins) {
+  if (origin.includes('*')) {
+    wildcardOrigins.push(origin);
+    continue;
+  }
+
+  explicitOrigins.add(origin);
+}
+
+function isOriginAllowed(origin) {
+  if (explicitOrigins.has(origin)) {
+    return true;
+  }
+
+  let parsedOrigin;
+  try {
+    parsedOrigin = new URL(origin);
+  } catch {
+    return false;
+  }
+
+  for (const pattern of wildcardOrigins) {
+    const wildcardMatch = pattern.match(/^(https?):\/\/\*\.(.+)$/i);
+    if (!wildcardMatch) {
+      continue;
+    }
+
+    const [, protocol, hostSuffix] = wildcardMatch;
+    if (parsedOrigin.protocol === `${protocol.toLowerCase()}:` && parsedOrigin.hostname.endsWith(`.${hostSuffix.toLowerCase()}`)) {
+      return true;
+    }
+  }
+
+  return false;
+}
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const productUploadsDir = path.resolve(__dirname, '../../frontend/public/uploads/products_img');
@@ -31,7 +69,7 @@ app.use(
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin || isOriginAllowed(origin)) {
         callback(null, true);
         return;
       }
