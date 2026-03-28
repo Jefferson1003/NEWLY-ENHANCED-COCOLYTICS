@@ -78,6 +78,13 @@ const emit = defineEmits(['logout', 'close']);
           <span>Documents</span>
         </span>
       </router-link>
+      <router-link to="/trader/manage-orders" class="inventory-link" @click="emit('close')">
+        <span class="nav-main">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v2H3zm2 4h14v10H5zm3 2v2h8v-2z"/></svg>
+          <span>Manage Orders</span>
+        </span>
+        <span v-if="toAcceptCount > 0" class="low-stock-badge">{{ toAcceptCount }} to accept</span>
+      </router-link>
       <router-link to="/trader/marketplace" @click="emit('close')">
         <span class="nav-main">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16l-1.5 12.5A2 2 0 0 1 16.5 21h-9a2 2 0 0 1-2-1.5L4 7zm4-4h8l1 3H7l1-3z"/></svg>
@@ -85,12 +92,11 @@ const emit = defineEmits(['logout', 'close']);
         </span>
         <span v-if="marketplaceToReceiveCount > 0" class="low-stock-badge">{{ marketplaceToReceiveCount }} to receive</span>
       </router-link>
-      <router-link to="/trader/manage-orders" class="inventory-link" @click="emit('close')">
+      <router-link to="/trader/browse-products" @click="emit('close')">
         <span class="nav-main">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v2H3zm2 4h14v10H5zm3 2v2h8v-2z"/></svg>
-          <span>Manage Orders</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v3H3zm2 5h14v9H5zm2 2v2h4v-2z"/></svg>
+          <span>Browse Products</span>
         </span>
-        <span v-if="toAcceptCount > 0" class="low-stock-badge">{{ toAcceptCount }} to accept</span>
       </router-link>
       <router-link to="/trader/inventory" class="inventory-link" @click="emit('close')">
         <span class="nav-main">
@@ -105,12 +111,7 @@ const emit = defineEmits(['logout', 'close']);
           <span>Operations</span>
         </span>
       </router-link>
-      <router-link to="/trader/browse-products" @click="emit('close')">
-        <span class="nav-main">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v3H3zm2 5h14v9H5zm2 2v2h4v-2z"/></svg>
-          <span>Browse Products</span>
-        </span>
-      </router-link>
+      
       <router-link to="/trader/messages" class="inventory-link" @click="emit('close')">
         <span class="nav-main">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v11H7l-3 3V4z"/></svg>
