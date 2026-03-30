@@ -46,6 +46,7 @@ import {
 } from '../models/marketplaceModel.js';
 import {
   createProduct,
+  deleteProductByIdAndTraderId,
   findProductByIdAndTraderId,
   findProductsByTraderId,
   sanitizeProduct,
@@ -434,6 +435,25 @@ export async function updateProduct(req, res) {
     });
   } catch {
     return res.status(500).json({ error: 'Could not update product.' });
+  }
+}
+
+export async function deleteProduct(req, res) {
+  const productId = Number(req.params.id);
+
+  if (!Number.isInteger(productId) || productId <= 0) {
+    return res.status(400).json({ error: 'Invalid product ID.' });
+  }
+
+  try {
+    const affectedRows = await deleteProductByIdAndTraderId(productId, req.auth.id);
+    if (!affectedRows) {
+      return res.status(404).json({ error: 'Product not found.' });
+    }
+
+    return res.status(200).json({ message: 'Product deleted successfully.' });
+  } catch {
+    return res.status(500).json({ error: 'Could not delete product.' });
   }
 }
 

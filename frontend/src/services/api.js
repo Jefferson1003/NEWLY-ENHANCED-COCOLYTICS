@@ -264,6 +264,14 @@ export function updateTraderProduct(productId, payload) {
   });
 }
 
+export function removeTraderProduct(productId) {
+  return request(`/api/trader/products/${productId}`, {
+    method: 'DELETE',
+  }, {
+    successMessage: 'Product deleted successfully.',
+  });
+}
+
 export function fetchMarketplaceTraders() {
   return request('/api/trader/marketplace/traders');
 }

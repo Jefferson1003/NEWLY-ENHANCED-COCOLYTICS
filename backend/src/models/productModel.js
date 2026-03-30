@@ -104,6 +104,18 @@ export async function updateProductByIdAndTraderId(productId, traderId, payload)
   return result.affectedRows;
 }
 
+export async function deleteProductByIdAndTraderId(productId, traderId) {
+  const [result] = await pool.execute(
+    `
+      DELETE FROM products
+      WHERE id = ? AND trader_id = ?
+    `,
+    [productId, traderId]
+  );
+
+  return result.affectedRows;
+}
+
 export function sanitizeProduct(product) {
   return {
     id: product.id,

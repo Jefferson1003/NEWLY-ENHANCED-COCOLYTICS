@@ -3,6 +3,7 @@ import {
   addItemToCart,
   addProduct,
   cancelMyOrder,
+  deleteProduct,
   getPublicMarketplaceTraderDetail,
   getTraderProfile,
   listCart,
@@ -99,5 +100,6 @@ traderRouter.patch('/products/:id', (req, res, next) => {
     return next();
   });
 }, updateProduct);
+traderRouter.delete('/products/:id', deleteProduct);
 
 export default traderRouter;

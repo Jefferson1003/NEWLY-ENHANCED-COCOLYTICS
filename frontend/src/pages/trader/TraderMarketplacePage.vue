@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import ConfirmationModal from '../../components/ConfirmationModal.vue';
 import {
   cancelMyOrder,
   createTraderProduct,
@@ -11,6 +12,7 @@ import {
   markMyOrderReceived,
   placeMyOrder,
   removeCartItem,
+  removeTraderProduct,
   updateTraderProduct,
   updateCartItemQuantity as updateCartItemQuantityApi,
 } from '../../services/api';
@@ -48,7 +50,9 @@ const showCheckoutConfirmModal = ref(false);
 const showProductEditModal = ref(false);
 const showCancelOrderModal = ref(false);
 const showReceiveRatingModal = ref(false);
+const showDeleteProductConfirmModal = ref(false);
 const editingProduct = ref(null);
+const pendingDeleteProduct = ref(null);
 const cancellingOrderId = ref(null);
 const receivingOrderId = ref(null);
 const cancellationReason = ref('');
@@ -56,6 +60,7 @@ const receiveRating = ref(0);
 const receiveReview = ref('');
 const orderActionLoadingIds = ref([]);
 const productSaving = ref(false);
+const deletingProductId = ref(null);
 const MY_ORDERS_UPDATED_EVENT = 'cocolytics-my-orders-updated';
 const FAST_MARKETPLACE_POLL_MS = 2500;
 const editProductForm = reactive({
@@ -114,6 +119,10 @@ const filteredOrders = computed(() => {
 });
 
 const filteredOrderCount = computed(() => filteredOrders.value.length);
+const deleteProductConfirmMessage = computed(() => {
+  const name = String(pendingDeleteProduct.value?.productName || 'this product').trim();
+  return `Delete "${name}"? This action cannot be undone.`;
+});
 
 function isCurrentTraderId(value) {
   const parsed = Number(value);
@@ -664,6 +673,55 @@ async function saveEditedProduct() {
   }
 }
 
+function isDeletingProduct(productId) {
+  return Number(deletingProductId.value) === Number(productId);
+}
+
+function openDeleteProductConfirmModal(product) {
+  const productId = Number(product?.id || 0);
+  if (!Number.isInteger(productId) || productId <= 0) {
+    feedback.value = 'Invalid product selected.';
+    return;
+  }
+
+  pendingDeleteProduct.value = product;
+  showDeleteProductConfirmModal.value = true;
+}
+
+function closeDeleteProductConfirmModal() {
+  if (deletingProductId.value !== null) {
+    return;
+  }
+
+  showDeleteProductConfirmModal.value = false;
+  pendingDeleteProduct.value = null;
+}
+
+async function deleteInventoryProduct() {
+  const product = pendingDeleteProduct.value;
+  const productId = Number(product?.id || 0);
+  if (!Number.isInteger(productId) || productId <= 0) {
+    feedback.value = 'Invalid product selected.';
+    showDeleteProductConfirmModal.value = false;
+    pendingDeleteProduct.value = null;
+    return;
+  }
+
+  deletingProductId.value = productId;
+  try {
+    await removeTraderProduct(productId);
+    feedback.value = 'Product deleted successfully.';
+    await Promise.all([loadProducts(), loadMarketplace()]);
+    emitInventoryUpdated();
+    showDeleteProductConfirmModal.value = false;
+    pendingDeleteProduct.value = null;
+  } catch (error) {
+    feedback.value = error.message;
+  } finally {
+    deletingProductId.value = null;
+  }
+}
+
 async function loadMarketplace(options = {}) {
   const { silent = false } = options;
   if (!silent) {
@@ -1016,11 +1074,32 @@ onUnmounted(() => {
             <p>Length: {{ product.lengthCm ?? 'N/A' }} cm</p>
             <p>Price: PHP {{ Number(product.productPrice || 0).toFixed(2) }}</p>
             <p>Stock: {{ product.stockQuantity }}</p>
-            <button type="button" class="mini-btn" @click.stop="openEditProductModal(product)">Edit Product</button>
+            <div class="inventory-actions">
+              <button type="button" class="mini-btn" @click.stop="openEditProductModal(product)">Edit Product</button>
+              <button
+                type="button"
+                class="mini-btn danger"
+                :disabled="isDeletingProduct(product.id)"
+                @click.stop="openDeleteProductConfirmModal(product)"
+              >
+                {{ isDeletingProduct(product.id) ? 'Deleting...' : 'Delete' }}
+              </button>
+            </div>
           </div>
         </article>
       </div>
     </section>
+
+    <ConfirmationModal
+      :visible="showDeleteProductConfirmModal"
+      title="Delete Product"
+      :message="deleteProductConfirmMessage"
+      :confirm-label="deletingProductId !== null ? 'Deleting...' : 'Delete Product'"
+      cancel-label="Keep Product"
+      :danger="true"
+      @cancel="closeDeleteProductConfirmModal"
+      @confirm="deleteInventoryProduct"
+    />
 
     <section v-if="activeTab === 'marketplace'" class="list-panel">
       <h2>All Traders</h2>
@@ -1666,6 +1745,13 @@ button:disabled {
 
 .inventory-product-content {
   min-width: 0;
+}
+
+.inventory-actions {
+  margin-top: 0.3rem;
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
 }
 
 .product-card.clickable {
