@@ -232,6 +232,14 @@ export function uploadTraderGcashQr(file) {
   });
 }
 
+export function removeTraderGcashQr() {
+  return request('/api/trader/profile/gcash-qr', {
+    method: 'DELETE',
+  }, {
+    successMessage: 'GCash QR removed successfully.',
+  });
+}
+
 export function fetchTraderProducts() {
   return request('/api/trader/products');
 }

@@ -12,6 +12,7 @@ import {
   listPublicMarketplaceTraders,
   listOrders,
   listSalesOrders,
+  removeTraderGcashQr,
   markMyOrderReceived,
   updateSalesOrderStatus,
   updateTraderGcashQr,
@@ -58,6 +59,7 @@ traderRouter.post('/profile/gcash-qr', (req, res, next) => {
     return next();
   });
 }, updateTraderGcashQr);
+traderRouter.delete('/profile/gcash-qr', removeTraderGcashQr);
 traderRouter.get('/products', listMyProducts);
 traderRouter.get('/marketplace/traders', listMarketplace);
 traderRouter.get('/messages/contacts', traderChatHandlers.listMessageContacts);

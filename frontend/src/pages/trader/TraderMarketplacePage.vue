@@ -240,6 +240,21 @@ const selectedCheckoutTrader = computed(() => {
 });
 
 const needsSingleSellerForGcash = computed(() => checkoutPaymentMethod.value === 'gcash' && selectedCheckoutTraderIds.value.length !== 1);
+const isGcashAvailableForSelection = computed(() => {
+  return selectedCheckoutTraderIds.value.length === 1 && Boolean(selectedCheckoutTrader.value?.gcashQrPath);
+});
+
+const gcashUnavailableReason = computed(() => {
+  if (selectedCheckoutTraderIds.value.length !== 1) {
+    return 'Select items from one seller to continue with GCash.';
+  }
+
+  if (!selectedCheckoutTrader.value?.gcashQrPath) {
+    return 'Selected seller has no GCash receive QR configured yet.';
+  }
+
+  return '';
+});
 
 const allCartItemsSelected = computed(() => {
   return cartItems.value.length > 0 && selectedCartItemIds.value.length === cartItems.value.length;
@@ -1084,6 +1099,12 @@ watch(checkoutPaymentMethod, (value) => {
     paymentReceiptFile.value = null;
   }
 });
+
+watch(isGcashAvailableForSelection, (isAvailable) => {
+  if (!isAvailable && checkoutPaymentMethod.value === 'gcash') {
+    checkoutPaymentMethod.value = 'cash_on_delivery';
+  }
+});
 </script>
 
 <template>
@@ -1564,19 +1585,33 @@ watch(checkoutPaymentMethod, (value) => {
 
         <footer class="modal-actions">
           <div class="payment-method-block">
-            <label class="payment-method-label">
-              Payment Method
-              <select v-model="checkoutPaymentMethod" class="order-status-select">
-                <option value="cash_on_delivery">Cash on Delivery</option>
-                <option value="gcash">GCash</option>
-              </select>
-            </label>
+            <p class="payment-method-title">Payment Method</p>
 
-            <p v-if="checkoutPaymentMethod === 'gcash' && needsSingleSellerForGcash" class="muted">
-              Select items from one seller to continue with GCash.
+            <div class="payment-method-options" role="group" aria-label="Payment method">
+              <button
+                type="button"
+                class="payment-option"
+                :class="{ active: checkoutPaymentMethod === 'cash_on_delivery' }"
+                @click="checkoutPaymentMethod = 'cash_on_delivery'"
+              >
+                Cash on Delivery
+              </button>
+              <button
+                type="button"
+                class="payment-option"
+                :class="{ active: checkoutPaymentMethod === 'gcash' }"
+                :disabled="!isGcashAvailableForSelection"
+                @click="checkoutPaymentMethod = 'gcash'"
+              >
+                GCash
+              </button>
+            </div>
+
+            <p v-if="!isGcashAvailableForSelection" class="muted">
+              {{ gcashUnavailableReason }}
             </p>
 
-            <div v-if="checkoutPaymentMethod === 'gcash' && !needsSingleSellerForGcash" class="gcash-box">
+            <div v-if="checkoutPaymentMethod === 'gcash' && isGcashAvailableForSelection" class="gcash-box">
               <p class="meta-line">Seller: {{ selectedCheckoutTrader?.name || 'Trader' }}</p>
               <img
                 v-if="selectedCheckoutTrader?.gcashQrPath"
@@ -1603,7 +1638,7 @@ watch(checkoutPaymentMethod, (value) => {
           <button
             type="button"
             class="checkout-btn"
-            :disabled="!selectedCartItems.length || (checkoutPaymentMethod === 'gcash' && (!selectedCheckoutTrader?.gcashQrPath || !paymentReceiptFile || needsSingleSellerForGcash))"
+            :disabled="!selectedCartItems.length || (checkoutPaymentMethod === 'gcash' && (!isGcashAvailableForSelection || !paymentReceiptFile || needsSingleSellerForGcash))"
             @click="confirmCheckoutSelection"
           >
             Confirm Checkout (Pending Seller Acceptance)
@@ -2417,6 +2452,38 @@ button:disabled {
   display: grid;
   gap: 0.55rem;
   width: 100%;
+}
+
+.payment-method-title {
+  margin: 0;
+  color: #d7fff1;
+  font-weight: 700;
+}
+
+.payment-method-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.payment-option {
+  border: 1px solid rgba(126, 223, 192, 0.35);
+  background: rgba(4, 28, 39, 0.62);
+  color: #dcfff2;
+  border-radius: 10px;
+  padding: 0.58rem 0.65rem;
+  font-weight: 800;
+  transition: border-color 0.2s ease, background-color 0.2s ease, opacity 0.2s ease;
+}
+
+.payment-option.active {
+  border-color: rgba(127, 225, 194, 0.78);
+  background: linear-gradient(145deg, rgba(22, 123, 97, 0.55), rgba(13, 94, 74, 0.76));
+}
+
+.payment-option:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .payment-method-label {

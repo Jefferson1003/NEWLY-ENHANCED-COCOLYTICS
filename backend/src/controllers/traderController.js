@@ -382,6 +382,23 @@ export async function updateTraderGcashQr(req, res) {
   }
 }
 
+export async function removeTraderGcashQr(req, res) {
+  try {
+    const affectedRows = await updateTraderGcashQrById(req.auth.id, null);
+    if (!affectedRows) {
+      return res.status(404).json({ error: 'Trader profile not found.' });
+    }
+
+    const updatedUser = await findUserById(req.auth.id);
+    return res.status(200).json({
+      message: 'GCash QR removed successfully.',
+      user: sanitizeUser(updatedUser),
+    });
+  } catch {
+    return res.status(500).json({ error: 'Could not remove GCash QR.' });
+  }
+}
+
 export async function listMyProducts(req, res) {
   try {
     const products = await findProductsByTraderId(req.auth.id);

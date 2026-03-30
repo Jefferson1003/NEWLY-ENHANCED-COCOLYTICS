@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue';
 import {
   fetchTraderProfile,
+  removeTraderGcashQr,
   updateTraderProfile,
   uploadTraderGcashQr,
   uploadTraderProfileImage,
@@ -18,6 +19,7 @@ const form = reactive({
 const loading = ref(false);
 const saving = ref(false);
 const feedback = ref('');
+const removingGcashQr = ref(false);
 const profileImageFile = ref(null);
 const profileImagePreview = ref('');
 const gcashQrFile = ref(null);
@@ -189,6 +191,37 @@ function downloadGcashQr() {
   anchor.click();
 }
 
+async function removeGcashQr() {
+  if (!gcashQrPreview.value || removingGcashQr.value) {
+    return;
+  }
+
+  removingGcashQr.value = true;
+  feedback.value = '';
+  try {
+    const response = await removeTraderGcashQr();
+    const latestUser = response.user || null;
+    gcashQrFile.value = null;
+
+    if (gcashQrPreview.value && gcashQrPreview.value.startsWith('blob:')) {
+      URL.revokeObjectURL(gcashQrPreview.value);
+    }
+
+    gcashQrPreview.value = '';
+
+    if (latestUser) {
+      saveSession(getToken(), latestUser);
+      gcashQrPreview.value = toImageUrl(latestUser.gcashQrPath || '');
+    }
+
+    feedback.value = 'GCash QR removed successfully.';
+  } catch (error) {
+    feedback.value = error.message;
+  } finally {
+    removingGcashQr.value = false;
+  }
+}
+
 function onSelectProfileImage(event) {
   const [file] = event.target.files || [];
   if (!file) {
@@ -345,7 +378,17 @@ onMounted(loadProfile);
           <input type="file" accept="image/*" @change="onSelectGcashQr" />
         </label>
 
-        <button v-if="gcashQrPreview" type="button" class="ghost" @click="downloadGcashQr">Download QR</button>
+        <div v-if="gcashQrPreview" class="qr-actions">
+          <button type="button" class="ghost" @click="downloadGcashQr">Download QR</button>
+          <button
+            type="button"
+            class="ghost danger-btn"
+            :disabled="removingGcashQr"
+            @click="removeGcashQr"
+          >
+            {{ removingGcashQr ? 'Removing...' : 'Remove QR' }}
+          </button>
+        </div>
       </div>
     </section>
 
@@ -487,6 +530,21 @@ onMounted(loadProfile);
   width: 100%;
   display: grid;
   gap: 0.55rem;
+}
+
+.qr-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.qr-actions .ghost {
+  background: transparent;
+}
+
+.danger-btn {
+  border-color: rgba(247, 120, 120, 0.55);
+  color: #ffd3d3;
 }
 
 .qr-image {
