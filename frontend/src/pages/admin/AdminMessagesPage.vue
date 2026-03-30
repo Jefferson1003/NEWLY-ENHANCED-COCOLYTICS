@@ -960,7 +960,7 @@ watch(selectedTraderId, async () => {
 
 <style scoped>
 .page {
-  color: #effff7;
+  color: #e8edf5;
 }
 
 .kicker {
@@ -968,7 +968,7 @@ watch(selectedTraderId, async () => {
   text-transform: uppercase;
   letter-spacing: 0.14em;
   font-size: 0.7rem;
-  color: #9cf5cd;
+  color: #8ec8c0;
 }
 
 .head h1 {
@@ -977,38 +977,38 @@ watch(selectedTraderId, async () => {
 
 .sub {
   margin: 0.35rem 0 0;
-  color: #c8fce6;
+  color: #aeb8c6;
 }
 
 .feedback {
   margin-top: 0.8rem;
-  color: #ffbfca;
+  color: #ffb4bf;
 }
 
 .chat-layout {
   margin-top: 1rem;
-  border: 1px solid rgba(90, 102, 120, 0.35);
-  border-radius: 16px;
-  background: #1f2329;
-  padding: 0.55rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: #171b22;
+  padding: 0.75rem;
   display: grid;
   grid-template-columns: 310px 1fr;
-  gap: 0.55rem;
+  gap: 0.75rem;
   min-height: 72vh;
 }
 
 .contacts-panel,
 .thread-panel {
-  border: 1px solid rgba(76, 88, 106, 0.3);
-  border-radius: 12px;
-  background: #181b21;
-  padding: 0.6rem;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  background: #131821;
+  padding: 0.75rem;
 }
 
 .contacts-head h2,
 .thread-head h2 {
   margin: 0;
-  color: #eef3fb;
+  color: #f3f6fb;
 }
 
 .contacts-head {
@@ -1019,55 +1019,62 @@ watch(selectedTraderId, async () => {
 }
 
 .contacts-search {
-  margin-top: 0.45rem;
-  border: 1px solid rgba(91, 103, 125, 0.4);
+  margin-top: 0.55rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;
-  background: #252a33;
-  color: #ecf2ff;
-  padding: 0.52rem 0.75rem;
+  background: #0f141d;
+  color: #e7ecf5;
+  padding: 0.58rem 0.78rem;
   width: 100%;
 }
 
 .contacts-list {
-  margin-top: 0.6rem;
+  margin-top: 0.7rem;
   display: grid;
-  gap: 0.45rem;
+  gap: 0.5rem;
   max-height: min(62vh, 520px);
   overflow-y: auto;
   overflow-x: hidden;
 }
 
 .contact-item {
-  border: 1px solid rgba(91, 103, 125, 0.35);
-  border-radius: 10px;
-  background: #1f242d;
-  padding: 0.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: #171d28;
+  padding: 0.55rem 0.6rem;
   display: grid;
-  grid-template-columns: 44px 1fr auto;
-  gap: 0.45rem;
-  align-items: center;
+  grid-template-columns: 42px 1fr auto;
+  gap: 0.55rem;
+  align-items: start;
   text-align: left;
 }
 
 .contact-item.active {
-  border-color: rgba(73, 128, 255, 0.75);
-  background: #24344f;
+  border-color: rgba(111, 140, 255, 0.85);
+  background: #1d2433;
 }
 
 .contact-avatar {
-  width: 44px;
-  height: 44px;
+  width: 42px;
+  height: 42px;
   object-fit: cover;
   border-radius: 999px;
-  border: 1px solid rgba(131, 236, 200, 0.35);
+  border: 1px solid rgba(156, 172, 198, 0.45);
 }
 
 .contact-avatar.placeholder {
   display: grid;
   place-items: center;
-  background: #2e333f;
-  color: #e7fff4;
+  background: #293241;
+  color: #edf3ff;
   font-weight: 900;
+}
+
+.contact-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
 .contact-info p {
@@ -1075,24 +1082,30 @@ watch(selectedTraderId, async () => {
 }
 
 .contact-name {
-  color: #eef3fb;
+  color: #f3f6fb;
   font-weight: 700;
+  font-size: 0.92rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .contact-name-row {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.38rem;
+  max-width: 100%;
 }
 
 .role-badge {
   border-radius: 999px;
   border: 1px solid transparent;
-  padding: 0.03rem 0.4rem;
-  font-size: 0.62rem;
+  padding: 0.08rem 0.45rem;
+  font-size: 0.6rem;
   font-weight: 800;
   letter-spacing: 0.08em;
   line-height: 1.2;
+  flex-shrink: 0;
 }
 
 .role-badge.admin {
@@ -1120,16 +1133,16 @@ watch(selectedTraderId, async () => {
 }
 
 .contact-presence {
-  margin-top: 0.08rem;
-  color: #9aa9c2;
+  margin-top: 0.14rem;
+  color: #9aa8bc;
   font-size: 0.72rem;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.35rem;
 }
 
 .contact-presence.online {
-  color: #a8ffcf;
+  color: #9ddeb6;
 }
 
 .presence-dot {
@@ -1141,13 +1154,17 @@ watch(selectedTraderId, async () => {
 
 .online .presence-dot {
   background: #3ef378;
-  box-shadow: 0 0 0 2px rgba(62, 243, 120, 0.22);
+  box-shadow: 0 0 0 2px rgba(62, 243, 120, 0.18);
 }
 
 .contact-last {
-  margin-top: 0.12rem;
-  color: #acb7ca;
+  margin-top: 0.18rem;
+  color: #b4bfd0;
   font-size: 0.76rem;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .unread-badge {
@@ -1166,10 +1183,10 @@ watch(selectedTraderId, async () => {
 }
 
 .thread-head {
-  border-bottom: 1px solid rgba(86, 97, 117, 0.38);
-  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 0.6rem;
   display: grid;
-  gap: 0.45rem;
+  gap: 0.5rem;
 }
 
 .back-chat-btn {
@@ -1187,13 +1204,14 @@ watch(selectedTraderId, async () => {
 .thread-user {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.55rem;
 }
 
 .thread-user-name-row {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 0.45rem;
+  flex-wrap: wrap;
 }
 
 .thread-user-name-row h2 {
@@ -1205,28 +1223,28 @@ watch(selectedTraderId, async () => {
   height: 38px;
   border-radius: 999px;
   object-fit: cover;
-  border: 1px solid rgba(102, 114, 136, 0.4);
+  border: 1px solid rgba(148, 163, 188, 0.45);
 }
 
 .thread-avatar.placeholder {
   display: grid;
   place-items: center;
-  background: #2e333f;
-  color: #e7fff4;
+  background: #293241;
+  color: #edf3ff;
   font-weight: 900;
 }
 
 .thread-status {
   margin: 0.12rem 0 0;
-  color: #9fb1c9;
+  color: #9ba9bd;
   font-size: 0.75rem;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 0.35rem;
 }
 
 .thread-status.online {
-  color: #a8ffcf;
+  color: #9ddeb6;
 }
 
 .thread-actions {
@@ -1269,10 +1287,10 @@ watch(selectedTraderId, async () => {
 }
 
 .message-list {
-  margin-top: 0.65rem;
+  margin-top: 0.75rem;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: 0.5rem;
   min-height: 36vh;
   max-height: min(54vh, 560px);
   overflow-y: auto;
@@ -1314,17 +1332,17 @@ watch(selectedTraderId, async () => {
 
 .message-bubble {
   max-width: min(92%, 500px);
-  border: 1px solid rgba(89, 101, 124, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.11);
   border-radius: 16px;
-  background: #2c313a;
-  padding: 0.5rem 0.62rem;
+  background: #232a36;
+  padding: 0.56rem 0.68rem;
   touch-action: pan-y;
   transition: transform 0.16s ease;
 }
 
 .message-bubble.mine {
-  background: #3a5df8;
-  border-color: rgba(122, 151, 255, 0.7);
+  background: #2f63de;
+  border-color: rgba(141, 170, 255, 0.78);
 }
 
 .call-log-bubble {
@@ -1520,10 +1538,10 @@ watch(selectedTraderId, async () => {
 }
 
 .composer input {
-  border: 1px solid rgba(92, 103, 124, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;
-  background: #232831;
-  color: #edf3ff;
+  background: #101721;
+  color: #edf2fb;
   padding: 0.6rem 0.78rem;
   font: inherit;
 }
@@ -1549,7 +1567,7 @@ watch(selectedTraderId, async () => {
 }
 
 .muted {
-  color: #c2f7e0;
+  color: #9eacbd;
   margin-top: 0.65rem;
 }
 
