@@ -53,6 +53,8 @@ const showProductEditModal = ref(false);
 const showCancelOrderModal = ref(false);
 const showReceiveRatingModal = ref(false);
 const showDeleteProductConfirmModal = ref(false);
+const checkoutPaymentMethod = ref('cash_on_delivery');
+const paymentReceiptFile = ref(null);
 const editingProduct = ref(null);
 const pendingDeleteProduct = ref(null);
 const cancellingOrderId = ref(null);
@@ -219,6 +221,25 @@ const groupedCartByTrader = computed(() => {
 const selectedCartQuantity = computed(() => {
   return selectedCartItems.value.reduce((total, item) => total + Number(item.quantity || 0), 0);
 });
+
+const selectedCheckoutTraderIds = computed(() => {
+  return [...new Set(
+    selectedCartItems.value
+      .map((item) => Number(item.traderId || 0))
+      .filter((id) => Number.isInteger(id) && id > 0)
+  )];
+});
+
+const selectedCheckoutTrader = computed(() => {
+  if (selectedCheckoutTraderIds.value.length !== 1) {
+    return null;
+  }
+
+  const traderId = selectedCheckoutTraderIds.value[0];
+  return marketplace.value.find((trader) => Number(trader.traderId) === traderId) || null;
+});
+
+const needsSingleSellerForGcash = computed(() => checkoutPaymentMethod.value === 'gcash' && selectedCheckoutTraderIds.value.length !== 1);
 
 const allCartItemsSelected = computed(() => {
   return cartItems.value.length > 0 && selectedCartItemIds.value.length === cartItems.value.length;
@@ -512,6 +533,26 @@ function openCheckoutConfirmation() {
 
 function closeCheckoutConfirmation() {
   showCheckoutConfirmModal.value = false;
+}
+
+function onSelectPaymentReceipt(event) {
+  const [file] = event.target.files || [];
+  paymentReceiptFile.value = file || null;
+}
+
+function downloadSelectedTraderQr() {
+  const qrPath = selectedCheckoutTrader.value?.gcashQrPath;
+  const url = toImageUrl(qrPath);
+  if (!url) {
+    return;
+  }
+
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = 'gcash-qr-code';
+  anchor.target = '_blank';
+  anchor.rel = 'noopener';
+  anchor.click();
 }
 
 async function confirmCheckoutSelection() {
@@ -921,6 +962,23 @@ async function checkoutCart() {
     return false;
   }
 
+  if (checkoutPaymentMethod.value === 'gcash') {
+    if (selectedCheckoutTraderIds.value.length !== 1) {
+      feedback.value = 'GCash checkout currently supports one seller per checkout.';
+      return false;
+    }
+
+    if (!selectedCheckoutTrader.value?.gcashQrPath) {
+      feedback.value = 'Selected seller has no GCash QR configured yet.';
+      return false;
+    }
+
+    if (!paymentReceiptFile.value) {
+      feedback.value = 'Please upload your GCash payment receipt.';
+      return false;
+    }
+  }
+
   try {
     await placeMyOrder({
       fullName: address.fullName,
@@ -930,7 +988,8 @@ async function checkoutCart() {
       provinceName: address.provinceName,
       cityName: address.cityName,
       barangayName: address.barangayName,
-      paymentMethod: 'cash_on_delivery',
+      paymentMethod: checkoutPaymentMethod.value,
+      paymentReceiptImage: paymentReceiptFile.value,
       deliveryNotes: address.deliveryNotes || '',
       selectedCartItemIds: selectedCartItemIds.value,
     });
@@ -938,6 +997,8 @@ async function checkoutCart() {
     feedback.value = 'Order placed successfully.';
     await Promise.all([loadCart(), loadOrders(), loadMarketplace(), loadProducts()]);
     activeTab.value = 'orders';
+    checkoutPaymentMethod.value = 'cash_on_delivery';
+    paymentReceiptFile.value = null;
     return true;
   } catch (error) {
     feedback.value = error.message;
@@ -967,6 +1028,8 @@ async function submitProduct() {
 }
 
 onMounted(async () => {
+  checkoutPaymentMethod.value = 'cash_on_delivery';
+  paymentReceiptFile.value = null;
   activeTab.value = normalizeTabForRoute(route.query.tab);
 
   if (String(route.query.addressSaved || '') === '1') {
@@ -1015,6 +1078,12 @@ watch(
     activeTab.value = normalizeTabForRoute(activeTab.value);
   }
 );
+
+watch(checkoutPaymentMethod, (value) => {
+  if (value !== 'gcash') {
+    paymentReceiptFile.value = null;
+  }
+});
 </script>
 
 <template>
@@ -1228,7 +1297,7 @@ watch(
             {{ currentAddress.regionName || 'No region' }}
           </p>
           <p>Delivery Notes: {{ currentAddress.deliveryNotes || 'None' }}</p>
-          <p>Payment: Cash on Delivery</p>
+          <p>Payment: {{ checkoutPaymentMethod === 'gcash' ? 'GCash' : 'Cash on Delivery' }}</p>
         </div>
 
         <div class="cart-groups">
@@ -1494,6 +1563,39 @@ watch(
         </div>
 
         <footer class="modal-actions">
+          <div class="payment-method-block">
+            <label class="payment-method-label">
+              Payment Method
+              <select v-model="checkoutPaymentMethod" class="order-status-select">
+                <option value="cash_on_delivery">Cash on Delivery</option>
+                <option value="gcash">GCash</option>
+              </select>
+            </label>
+
+            <p v-if="checkoutPaymentMethod === 'gcash' && needsSingleSellerForGcash" class="muted">
+              Select items from one seller to continue with GCash.
+            </p>
+
+            <div v-if="checkoutPaymentMethod === 'gcash' && !needsSingleSellerForGcash" class="gcash-box">
+              <p class="meta-line">Seller: {{ selectedCheckoutTrader?.name || 'Trader' }}</p>
+              <img
+                v-if="selectedCheckoutTrader?.gcashQrPath"
+                :src="toImageUrl(selectedCheckoutTrader.gcashQrPath)"
+                alt="Seller GCash QR"
+                class="gcash-qr-preview"
+              />
+              <p v-else class="muted">Seller has no GCash QR configured yet.</p>
+              <button v-if="selectedCheckoutTrader?.gcashQrPath" type="button" class="mini-btn" @click="downloadSelectedTraderQr">
+                Download QR
+              </button>
+
+              <label class="payment-method-label">
+                Upload GCash Receipt
+                <input type="file" accept="image/*" @change="onSelectPaymentReceipt" />
+              </label>
+            </div>
+          </div>
+
           <p>
             Selected Items: {{ selectedCartItems.length }} | Total Quantity: {{ selectedCartQuantity }} |
             Total Amount: {{ formatCurrency(selectedCartAmount) }}
@@ -1501,7 +1603,7 @@ watch(
           <button
             type="button"
             class="checkout-btn"
-            :disabled="!selectedCartItems.length"
+            :disabled="!selectedCartItems.length || (checkoutPaymentMethod === 'gcash' && (!selectedCheckoutTrader?.gcashQrPath || !paymentReceiptFile || needsSingleSellerForGcash))"
             @click="confirmCheckoutSelection"
           >
             Confirm Checkout (Pending Seller Acceptance)
@@ -2309,6 +2411,43 @@ button:disabled {
   margin: 0;
   color: #d7fff1;
   font-weight: 700;
+}
+
+.payment-method-block {
+  display: grid;
+  gap: 0.55rem;
+  width: 100%;
+}
+
+.payment-method-label {
+  display: grid;
+  gap: 0.3rem;
+  color: #d7fff1;
+  font-weight: 700;
+}
+
+.gcash-box {
+  border: 1px solid rgba(126, 223, 192, 0.28);
+  border-radius: 12px;
+  background: rgba(4, 28, 39, 0.62);
+  padding: 0.6rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.meta-line {
+  margin: 0;
+  color: #d7fff1;
+  font-size: 0.82rem;
+}
+
+.gcash-qr-preview {
+  width: min(220px, 100%);
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  border: 1px solid rgba(126, 223, 192, 0.35);
+  border-radius: 10px;
+  background: rgba(5, 27, 37, 0.75);
 }
 
 .table-wrap {

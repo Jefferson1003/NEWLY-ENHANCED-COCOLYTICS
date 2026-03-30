@@ -14,6 +14,7 @@ import {
   listSalesOrders,
   markMyOrderReceived,
   updateSalesOrderStatus,
+  updateTraderGcashQr,
   listMyProducts,
   placeOrder,
   removeCartItem,
@@ -22,7 +23,9 @@ import {
   updateTraderProfile,
   updateTraderProfileImage,
   uploadPaperFile,
+  uploadPaymentReceiptImage,
   uploadProfileImage,
+  uploadGcashQrImage,
   uploadProductImage,
   uploadTraderPaper,
 } from '../controllers/traderController.js';
@@ -46,6 +49,15 @@ traderRouter.post('/profile/image', (req, res, next) => {
     return next();
   });
 }, updateTraderProfileImage);
+traderRouter.post('/profile/gcash-qr', (req, res, next) => {
+  uploadGcashQrImage(req, res, (error) => {
+    if (error) {
+      return res.status(400).json({ error: error.message || 'Invalid upload.' });
+    }
+
+    return next();
+  });
+}, updateTraderGcashQr);
 traderRouter.get('/products', listMyProducts);
 traderRouter.get('/marketplace/traders', listMarketplace);
 traderRouter.get('/messages/contacts', traderChatHandlers.listMessageContacts);
@@ -67,7 +79,15 @@ traderRouter.get('/cart', listCart);
 traderRouter.post('/cart', addItemToCart);
 traderRouter.delete('/cart/:id', removeCartItem);
 traderRouter.patch('/cart/:id/quantity', updateCartItemQuantity);
-traderRouter.post('/orders/place', placeOrder);
+traderRouter.post('/orders/place', (req, res, next) => {
+  uploadPaymentReceiptImage(req, res, (error) => {
+    if (error) {
+      return res.status(400).json({ error: error.message || 'Invalid upload.' });
+    }
+
+    return next();
+  });
+}, placeOrder);
 traderRouter.get('/orders', listOrders);
 traderRouter.patch('/orders/:orderId/cancel', cancelMyOrder);
 traderRouter.patch('/orders/:orderId/received', markMyOrderReceived);

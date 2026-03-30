@@ -9,6 +9,7 @@ export async function findMarketplaceRows() {
         u.profile_name,
         u.profile_description,
         u.profile_image_path,
+        u.gcash_qr_path,
         u.contact_number,
         u.business_address,
         p.id AS product_id,
@@ -51,6 +52,7 @@ export async function findMarketplaceRowsByTraderId(traderId) {
         u.profile_name,
         u.profile_description,
         u.profile_image_path,
+        u.gcash_qr_path,
         u.contact_number,
         u.business_address,
         p.id AS product_id,
@@ -258,9 +260,12 @@ export async function placeOrderFromCart(buyerId, checkoutDetails, selectedCartI
           delivery_street_address,
           delivery_full_address,
           payment_method,
+          payment_status,
+          payment_receipt_path,
+          payment_submitted_at,
           delivery_notes
         )
-        VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, 'cash_on_delivery', ?)
+        VALUES (?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         buyerId,
@@ -272,6 +277,10 @@ export async function placeOrderFromCart(buyerId, checkoutDetails, selectedCartI
         checkoutDetails.barangayName,
         checkoutDetails.streetAddress,
         checkoutDetails.fullAddress,
+        checkoutDetails.paymentMethod,
+        checkoutDetails.paymentStatus,
+        checkoutDetails.paymentReceiptPath,
+        checkoutDetails.paymentSubmittedAt,
         checkoutDetails.deliveryNotes,
       ]
     );
@@ -358,6 +367,11 @@ export async function listOrdersByBuyerId(buyerId) {
         o.delivery_street_address,
         o.delivery_full_address,
         o.payment_method,
+        o.payment_status,
+        o.payment_receipt_path,
+        o.payment_submitted_at,
+        o.payment_verified_at,
+        o.payment_verified_by,
         o.delivery_notes,
         o.cancellation_reason,
         o.buyer_rating,
@@ -404,6 +418,11 @@ export async function listSalesOrderItemsByTraderId(traderId) {
         o.delivery_street_address,
         o.delivery_full_address,
         o.payment_method,
+        o.payment_status,
+        o.payment_receipt_path,
+        o.payment_submitted_at,
+        o.payment_verified_at,
+        o.payment_verified_by,
         o.delivery_notes,
         o.cancellation_reason,
         o.buyer_rating,
@@ -437,7 +456,7 @@ export async function listSalesOrderItemsByTraderId(traderId) {
 export async function findSalesOrderStatusByTraderId(traderId, orderId) {
   const [rows] = await pool.execute(
     `
-      SELECT o.id AS order_id, o.status
+      SELECT o.id AS order_id, o.status, o.payment_method, o.payment_status, o.payment_receipt_path
       FROM orders o
       INNER JOIN order_items oi ON oi.order_id = o.id
       WHERE o.id = ? AND oi.trader_id = ?
@@ -456,13 +475,25 @@ export async function updateSalesOrderStatusByTraderId(traderId, orderId, status
       INNER JOIN order_items oi ON oi.order_id = o.id
       SET
         o.status = ?,
+        o.payment_status = CASE
+          WHEN ? = 'to_ship' AND o.payment_method = 'gcash' THEN 'verified'
+          ELSE o.payment_status
+        END,
+        o.payment_verified_at = CASE
+          WHEN ? = 'to_ship' AND o.payment_method = 'gcash' THEN NOW()
+          ELSE o.payment_verified_at
+        END,
+        o.payment_verified_by = CASE
+          WHEN ? = 'to_ship' AND o.payment_method = 'gcash' THEN ?
+          ELSE o.payment_verified_by
+        END,
         o.dispatch_date = CASE
           WHEN ? = 'to_ship' THEN COALESCE(o.dispatch_date, NOW())
           ELSE o.dispatch_date
         END
       WHERE o.id = ? AND oi.trader_id = ?
     `,
-    [status, status, orderId, traderId]
+    [status, status, status, status, traderId, status, orderId, traderId]
   );
 
   return result.affectedRows;

@@ -220,6 +220,18 @@ export function uploadTraderProfileImage(file) {
   });
 }
 
+export function uploadTraderGcashQr(file) {
+  const formData = new FormData();
+  formData.append('gcashQrImage', file);
+
+  return request('/api/trader/profile/gcash-qr', {
+    method: 'POST',
+    body: formData,
+  }, {
+    successMessage: 'GCash QR uploaded successfully.',
+  });
+}
+
 export function fetchTraderProducts() {
   return request('/api/trader/products');
 }
@@ -315,9 +327,25 @@ export function updateCartItemQuantity(id, quantity) {
 }
 
 export function placeMyOrder(payload) {
+  const formData = new FormData();
+  formData.append('fullName', String(payload?.fullName || ''));
+  formData.append('contactNumber', String(payload?.contactNumber || ''));
+  formData.append('streetAddress', String(payload?.streetAddress || ''));
+  formData.append('regionName', String(payload?.regionName || ''));
+  formData.append('provinceName', String(payload?.provinceName || ''));
+  formData.append('cityName', String(payload?.cityName || ''));
+  formData.append('barangayName', String(payload?.barangayName || ''));
+  formData.append('paymentMethod', String(payload?.paymentMethod || 'cash_on_delivery'));
+  formData.append('deliveryNotes', String(payload?.deliveryNotes || ''));
+  formData.append('selectedCartItemIds', JSON.stringify(Array.isArray(payload?.selectedCartItemIds) ? payload.selectedCartItemIds : []));
+
+  if (payload?.paymentReceiptImage) {
+    formData.append('paymentReceiptImage', payload.paymentReceiptImage);
+  }
+
   return request('/api/trader/orders/place', {
     method: 'POST',
-    body: JSON.stringify(payload || {}),
+    body: formData,
   }, {
     successMessage: 'Order placed successfully.',
   });

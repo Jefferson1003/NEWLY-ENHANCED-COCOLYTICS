@@ -13,6 +13,8 @@ const viewMode = ref('list');
 const dispatchOrderId = ref(null);
 const dispatchNotes = ref('');
 const highlightedOrderId = ref(null);
+const showReceiptViewer = ref(false);
+const receiptViewerSrc = ref('');
 const SALES_ORDERS_UPDATED_EVENT = 'cocolytics-sales-orders-updated';
 const FAST_ORDERS_POLL_MS = 2500;
 let ordersPollTimer = null;
@@ -35,6 +37,28 @@ function formatStatus(value) {
     .split('_')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
+}
+
+function normalizePaymentMethod(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizePaymentStatus(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function isPendingGcashForVerification(order) {
+  return normalizeStatus(order?.status) === 'pending'
+    && normalizePaymentMethod(order?.paymentMethod) === 'gcash'
+    && normalizePaymentStatus(order?.paymentStatus) === 'to_verify';
+}
+
+function statusLabel(order) {
+  if (isPendingGcashForVerification(order)) {
+    return 'To Verify GCash';
+  }
+
+  return formatStatus(order?.status);
 }
 
 function formatOrderDate(value) {
@@ -85,6 +109,21 @@ function fullAddress(order) {
     .filter(Boolean);
 
   return parts.length ? parts.join(', ') : '-';
+}
+
+function openReceiptViewer(imagePath) {
+  const src = toImageUrl(imagePath);
+  if (!src) {
+    return;
+  }
+
+  receiptViewerSrc.value = src;
+  showReceiptViewer.value = true;
+}
+
+function closeReceiptViewer() {
+  showReceiptViewer.value = false;
+  receiptViewerSrc.value = '';
 }
 
 function isUpdating(orderId) {
@@ -182,6 +221,14 @@ const selectedDispatchOrder = computed(() => {
   return orders.value.find((order) => Number(order.id) === id) || null;
 });
 
+const dispatchActionLabel = computed(() => {
+  if (!selectedDispatchOrder.value) {
+    return 'Dispatch';
+  }
+
+  return isPendingGcashForVerification(selectedDispatchOrder.value) ? 'Verify Payment' : 'Dispatch';
+});
+
 async function markOrderToReceive(order) {
   const orderId = Number(order?.id || 0);
   if (!Number.isInteger(orderId) || orderId <= 0) {
@@ -216,6 +263,13 @@ async function dispatchOrder(order) {
   if (normalizeStatus(order.status) !== 'pending') {
     feedback.value = 'Only pending orders can be accepted for shipping.';
     return;
+  }
+
+  if (normalizePaymentMethod(order.paymentMethod) === 'gcash') {
+    if (normalizePaymentStatus(order.paymentStatus) !== 'to_verify' || !String(order.paymentReceiptPath || '').trim()) {
+      feedback.value = 'GCash payment receipt must be submitted before verification.';
+      return;
+    }
   }
 
   setUpdating(orderId, true);
@@ -377,6 +431,25 @@ onUnmounted(() => {
           </p>
         </section>
 
+        <section
+          v-if="normalizePaymentMethod(selectedDispatchOrder.paymentMethod) === 'gcash'"
+          class="dispatch-items"
+        >
+          <h3>GCash Payment Receipt</h3>
+          <p class="desc-line">
+            Status:
+            {{ normalizePaymentStatus(selectedDispatchOrder.paymentStatus) === 'to_verify' ? 'To Verify GCash' : normalizePaymentStatus(selectedDispatchOrder.paymentStatus) || '-' }}
+          </p>
+          <img
+            v-if="selectedDispatchOrder.paymentReceiptPath"
+            :src="toImageUrl(selectedDispatchOrder.paymentReceiptPath)"
+            alt="GCash payment receipt"
+            class="receipt-image clickable"
+            @click="openReceiptViewer(selectedDispatchOrder.paymentReceiptPath)"
+          />
+          <p v-else class="muted">No payment receipt uploaded.</p>
+        </section>
+
         <label class="dispatch-label">
           Dispatch Field / Textbox
           <textarea
@@ -395,7 +468,7 @@ onUnmounted(() => {
             :disabled="isUpdating(selectedDispatchOrder.id)"
             @click="dispatchOrder(selectedDispatchOrder)"
           >
-            {{ isUpdating(selectedDispatchOrder.id) ? 'Dispatching...' : 'Dispatch' }}
+            {{ isUpdating(selectedDispatchOrder.id) ? 'Updating...' : dispatchActionLabel }}
           </button>
         </div>
       </template>
@@ -444,7 +517,7 @@ onUnmounted(() => {
               <p>{{ formatOrderDate(order.createdAt) }}</p>
               <p class="cell-sub">Buyer: {{ order.buyerName || '-' }}</p>
             </div>
-            <span class="badge">{{ formatStatus(order.status) }}</span>
+            <span class="badge">{{ statusLabel(order) }}</span>
           </header>
 
           <div class="order-meta">
@@ -452,8 +525,19 @@ onUnmounted(() => {
             <p><strong>Contact Number:</strong> {{ order.customerContactNumber || '-' }}</p>
             <p><strong>Address:</strong> {{ fullAddress(order) }}</p>
             <p><strong>Dispatch Date:</strong> {{ formatDispatchDate(order.dispatchDate) }}</p>
+            <p><strong>Payment Method:</strong> {{ order.paymentMethod || 'cash_on_delivery' }}</p>
+            <p v-if="normalizePaymentMethod(order.paymentMethod) === 'gcash'">
+              <strong>Payment Status:</strong>
+              {{ normalizePaymentStatus(order.paymentStatus) === 'to_verify' ? 'To Verify GCash' : normalizePaymentStatus(order.paymentStatus) || '-' }}
+            </p>
             <p><strong>Notes:</strong> {{ order.deliveryNotes || '-' }}</p>
             <p><strong>Order Total:</strong> {{ formatCurrency(orderTotal(order)) }}</p>
+            <p v-if="order.paymentReceiptPath">
+              <strong>Payment Receipt:</strong>
+              <button type="button" class="receipt-open-btn" @click="openReceiptViewer(order.paymentReceiptPath)">
+                View Receipt
+              </button>
+            </p>
           </div>
 
           <div class="order-items">
@@ -487,7 +571,7 @@ onUnmounted(() => {
               :disabled="isUpdating(order.id)"
               @click="openDispatchForm(order)"
             >
-              {{ isUpdating(order.id) ? 'Updating...' : 'Dispatch' }}
+              {{ isUpdating(order.id) ? 'Updating...' : (isPendingGcashForVerification(order) ? 'Verify Payment' : 'Dispatch') }}
             </button>
             <button
               v-else-if="normalizeStatus(order.status) === 'to_ship'"
@@ -503,6 +587,20 @@ onUnmounted(() => {
         </article>
       </div>
     </section>
+
+    <div
+      v-if="showReceiptViewer"
+      class="receipt-viewer-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Payment receipt preview"
+      @click.self="closeReceiptViewer"
+    >
+      <section class="receipt-viewer-card">
+        <button type="button" class="receipt-close-btn" aria-label="Close receipt preview" @click="closeReceiptViewer">X</button>
+        <img :src="receiptViewerSrc" alt="GCash payment receipt preview" class="receipt-viewer-image" />
+      </section>
+    </div>
   </section>
 </template>
 
@@ -642,13 +740,82 @@ onUnmounted(() => {
 }
 
 .dispatch-items h3 {
+  margin: 0 0 0.45rem;
+}
 
 .order-total-line {
   margin: 0.25rem 0 0;
   color: #e5fff5;
   font-size: 0.86rem;
 }
-  margin: 0 0 0.45rem;
+
+.receipt-image {
+  margin-top: 0.45rem;
+  width: min(320px, 100%);
+  max-height: 360px;
+  object-fit: contain;
+  border-radius: 10px;
+  border: 1px solid rgba(133, 229, 197, 0.35);
+  background: rgba(5, 27, 37, 0.75);
+}
+
+.receipt-image.clickable {
+  cursor: zoom-in;
+}
+
+.receipt-open-btn {
+  margin-left: 0.4rem;
+  border: 1px solid rgba(133, 229, 197, 0.55);
+  border-radius: 8px;
+  background: #1f67a8;
+  color: #ecfff7;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  cursor: pointer;
+}
+
+.receipt-viewer-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  background: rgba(2, 9, 16, 0.76);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.receipt-viewer-card {
+  position: relative;
+  width: min(92vw, 700px);
+  max-height: 88vh;
+  border: 1px solid rgba(133, 229, 197, 0.45);
+  border-radius: 14px;
+  background: rgba(5, 27, 37, 0.92);
+  padding: 0.8rem;
+}
+
+.receipt-close-btn {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(133, 229, 197, 0.55);
+  border-radius: 8px;
+  background: rgba(5, 27, 37, 0.85);
+  color: #ecfff7;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.receipt-viewer-image {
+  width: 100%;
+  max-height: calc(88vh - 1.6rem);
+  object-fit: contain;
+  border-radius: 10px;
+  background: rgba(5, 27, 37, 0.75);
 }
 
 .dispatch-actions {

@@ -55,17 +55,27 @@ const emit = defineEmits(['logout', 'close']);
   position: fixed;
   top: 0;
   left: 0;
+  bottom: 0;
   z-index: 30;
   box-shadow: 8px 0 20px rgba(0, 0, 0, 0.45);
   border-right: 1px solid rgba(122, 228, 255, 0.24);
   width: min(82vw, 300px);
   max-width: 100%;
   padding: 1rem;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 1.25rem);
   background: linear-gradient(165deg, rgba(7, 39, 48, 0.95), rgba(11, 60, 70, 0.92));
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  height: 100vh;
+  height: 100dvh;
   min-height: 100vh;
+  min-height: 100dvh;
+  max-height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  -webkit-overflow-scrolling: touch;
   transition: transform 0.22s ease;
 }
 

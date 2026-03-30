@@ -3,6 +3,7 @@ import { onMounted, reactive, ref } from 'vue';
 import {
   fetchTraderProfile,
   updateTraderProfile,
+  uploadTraderGcashQr,
   uploadTraderProfileImage,
 } from '../../services/api';
 import { toMediaUrl } from '../../services/media';
@@ -19,6 +20,8 @@ const saving = ref(false);
 const feedback = ref('');
 const profileImageFile = ref(null);
 const profileImagePreview = ref('');
+const gcashQrFile = ref(null);
+const gcashQrPreview = ref('');
 const showImageCropModal = ref(false);
 const showImageViewerModal = ref(false);
 const cropImageUrl = ref('');
@@ -151,11 +154,39 @@ async function loadProfile() {
     form.contactNumber = data.user.contactNumber || '';
     form.businessAddress = data.user.businessAddress || '';
     profileImagePreview.value = toImageUrl(data.user.profileImagePath || '');
+    gcashQrPreview.value = toImageUrl(data.user.gcashQrPath || '');
   } catch (error) {
     feedback.value = error.message;
   } finally {
     loading.value = false;
   }
+}
+
+function onSelectGcashQr(event) {
+  const [file] = event.target.files || [];
+  if (!file) {
+    return;
+  }
+
+  gcashQrFile.value = file;
+  if (gcashQrPreview.value && gcashQrPreview.value.startsWith('blob:')) {
+    URL.revokeObjectURL(gcashQrPreview.value);
+  }
+  gcashQrPreview.value = URL.createObjectURL(file);
+  event.target.value = '';
+}
+
+function downloadGcashQr() {
+  if (!gcashQrPreview.value) {
+    return;
+  }
+
+  const anchor = document.createElement('a');
+  anchor.href = gcashQrPreview.value;
+  anchor.download = 'gcash-qr-code';
+  anchor.target = '_blank';
+  anchor.rel = 'noopener';
+  anchor.click();
 }
 
 function onSelectProfileImage(event) {
@@ -261,6 +292,13 @@ async function submitProfile() {
       profileImagePreview.value = toImageUrl(latestUser?.profileImagePath || '');
     }
 
+    if (gcashQrFile.value) {
+      const qrResponse = await uploadTraderGcashQr(gcashQrFile.value);
+      latestUser = qrResponse.user || latestUser;
+      gcashQrFile.value = null;
+      gcashQrPreview.value = toImageUrl(latestUser?.gcashQrPath || '');
+    }
+
     if (latestUser) {
       saveSession(getToken(), latestUser);
     }
@@ -297,6 +335,18 @@ onMounted(loadProfile);
         Upload Profile Picture
         <input type="file" accept="image/*" @change="onSelectProfileImage" />
       </label>
+
+      <div class="qr-wrap">
+        <img v-if="gcashQrPreview" :src="gcashQrPreview" alt="GCash QR" class="qr-image" />
+        <div v-else class="qr-image placeholder">No GCash QR</div>
+
+        <label class="file-label">
+          Upload GCash Receive QR
+          <input type="file" accept="image/*" @change="onSelectGcashQr" />
+        </label>
+
+        <button v-if="gcashQrPreview" type="button" class="ghost" @click="downloadGcashQr">Download QR</button>
+      </div>
     </section>
 
     <div v-if="showImageViewerModal" class="viewer-modal" @click.self="closeImageViewer">
@@ -431,6 +481,29 @@ onMounted(loadProfile);
 
 .file-label {
   width: 100%;
+}
+
+.qr-wrap {
+  width: 100%;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.qr-image {
+  width: min(220px, 100%);
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  border-radius: 10px;
+  border: 1px solid rgba(133, 229, 197, 0.45);
+  background: rgba(5, 27, 37, 0.75);
+  margin: 0 auto;
+}
+
+.qr-image.placeholder {
+  display: grid;
+  place-items: center;
+  color: #c9ffe9;
+  font-weight: 700;
 }
 
 label {

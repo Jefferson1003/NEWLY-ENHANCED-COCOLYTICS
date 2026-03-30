@@ -82,6 +82,7 @@ export async function findUserById(id) {
         business_address,
         staff_reason,
         profile_image_path,
+        gcash_qr_path,
         is_archived,
         archived_at,
         last_seen_at,
@@ -360,6 +361,19 @@ export async function updateTraderProfileImageById(id, profileImagePath) {
   return result.affectedRows;
 }
 
+export async function updateTraderGcashQrById(id, gcashQrPath) {
+  const [result] = await pool.execute(
+    `
+      UPDATE users
+      SET gcash_qr_path = ?
+      WHERE id = ? AND role = 'trader'
+    `,
+    [gcashQrPath, id]
+  );
+
+  return result.affectedRows;
+}
+
 export function sanitizeUser(user) {
   return {
     id: user.id,
@@ -375,6 +389,7 @@ export function sanitizeUser(user) {
     businessAddress: user.business_address || '',
     staffReason: user.staff_reason || '',
     profileImagePath: user.profile_image_path || '',
+    gcashQrPath: user.gcash_qr_path || '',
     isArchived: Boolean(user.is_archived),
     archivedAt: user.archived_at || null,
     lastSeenAt: user.last_seen_at || null,
