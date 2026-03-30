@@ -3,6 +3,7 @@ import { onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import AdminSidebar from '../../components/AdminSidebar.vue';
 import ConfirmationModal from '../../components/ConfirmationModal.vue';
+import OngoingCallMini from '../../components/OngoingCallMini.vue';
 import {
   fetchAdminMessageContacts,
   fetchClients,
@@ -319,6 +320,8 @@ onUnmounted(() => {
       @confirm="confirmLogout"
       @cancel="cancelLogout"
     />
+
+    <OngoingCallMini role="admin" />
   </section>
 </template>
 

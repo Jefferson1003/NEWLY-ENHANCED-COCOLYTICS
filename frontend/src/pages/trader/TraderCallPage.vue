@@ -3,6 +3,12 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
 import { fetchTraderMessageContacts, sendTraderCallSignal } from '../../services/api';
 import { toMediaUrl } from '../../services/media';
+import {
+  clearOngoingCallSession,
+  getOngoingCallState,
+  setOngoingCallMinimized,
+  setOngoingCallSession,
+} from '../../services/ongoingCall';
 import { getUser } from '../../services/session';
 import { ensureTraderRealtimeStream, subscribeTraderRealtime } from '../../services/traderRealtime';
 
@@ -47,12 +53,26 @@ const cameraFacingMode = ref('user');
 const canUseFacingModeSwitch = ref(false);
 
 const currentUserId = computed(() => Number(getUser()?.id || 0));
-const partnerId = computed(() => Number(route.query.traderId || 0));
+const partnerId = computed(() => {
+  const fromRoute = Number(route.query.traderId || 0);
+  if (Number.isInteger(fromRoute) && fromRoute > 0) {
+    return fromRoute;
+  }
+
+  const fromOngoing = Number(ongoingCallState.partnerId || 0);
+  if (ongoingCallState.active && ongoingCallState.role === 'trader' && Number.isInteger(fromOngoing) && fromOngoing > 0) {
+    return fromOngoing;
+  }
+
+  return 0;
+});
 const incoming = computed(() => String(route.query.incoming || '') === '1');
 const isiOSDevice = computed(() => /iPad|iPhone|iPod/i.test(navigator.userAgent || ''));
 const canFlipCamera = computed(
   () => callMode.value === 'video' && (videoDevices.value.length > 1 || canUseFacingModeSwitch.value || isiOSDevice.value)
 );
+const ongoingCallState = getOngoingCallState();
+const persistCallOnUnmount = ref(false);
 const hasRemoteVideoTrack = computed(() => {
   const tracks = remoteStream?.getVideoTracks?.() || [];
   return tracks.some((track) => track.readyState === 'live' && track.enabled !== false);
@@ -142,7 +162,64 @@ function markCallEnded(reason = 'Call ended') {
   stopDurationTicker();
   endedDurationSeconds.value = Math.max(0, durationSeconds.value);
   callStatus.value = reason;
+  active.value = false;
+  clearOngoingCallSession();
   scheduleEndRedirectToMessages();
+}
+
+function openCallRoute() {
+  setOngoingCallMinimized(false);
+  router.replace({
+    name: 'trader-call',
+    query: {
+      traderId: String(partnerId.value || ''),
+      mode: callMode.value,
+      ...(callId.value ? { callId: String(callId.value) } : {}),
+    },
+  });
+}
+
+function syncOngoingCallSession(minimized = false) {
+  if (!isCallOngoing.value) {
+    return;
+  }
+
+  setOngoingCallSession({
+    active: true,
+    minimized,
+    role: 'trader',
+    partnerId: partnerId.value,
+    partnerName: partner.value?.name || 'Trader',
+    mode: callMode.value,
+    localStream,
+    remoteStream,
+    openCall: openCallRoute,
+    endCall: () => endCall(false),
+  });
+}
+
+async function recoverFromMinimizedSession() {
+  localStream = ongoingCallState.localStream || null;
+  remoteStream = ongoingCallState.remoteStream || null;
+  callMode.value = ongoingCallState.mode === 'video' ? 'video' : 'audio';
+  callTerminated.value = false;
+  allowLeaveAfterEnd.value = false;
+  active.value = true;
+  callStatus.value = 'Connected';
+
+  await nextTick();
+  if (localVideoRef.value) {
+    localVideoRef.value.srcObject = localStream;
+  }
+  if (remoteVideoRef.value) {
+    remoteVideoRef.value.srcObject = remoteStream;
+  }
+
+  if (callMode.value === 'video') {
+    schedulePreviewFit(false);
+  }
+
+  syncOngoingCallSession(false);
 }
 
 function buildRtcConfig() {
@@ -518,10 +595,10 @@ async function createPeerConnection() {
 
     if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
       markCallEnded('Call ended');
-      active.value = false;
       callTerminated.value = true;
       allowLeaveAfterEnd.value = true;
       stopRingingTone();
+      cleanupConnection();
     }
   };
 
@@ -576,10 +653,17 @@ async function endCall(leavePage = true) {
   markCallEnded('Call ended');
   cleanupConnection();
   active.value = false;
+  clearOngoingCallSession();
 
   if (leavePage) {
     router.replace({ name: 'trader-messages', query: { traderId: String(partnerId.value || '') } });
   }
+}
+
+function minimizeCall() {
+  syncOngoingCallSession(true);
+  persistCallOnUnmount.value = true;
+  router.replace({ name: 'trader-messages', query: { traderId: String(partnerId.value || '') } });
 }
 
 function toggleMute() {
@@ -858,8 +942,13 @@ async function handleCallEvent(rawEvent) {
   const fromTraderId = Number(event.fromTraderId);
   const toTraderId = Number(event.toTraderId);
   const payload = event.payload && typeof event.payload === 'object' ? event.payload : {};
-  if (payload?.callId) {
-    callId.value = Number(payload.callId);
+  const payloadCallId = Number(payload?.callId || 0);
+  if (callId.value && payloadCallId && Number(callId.value) !== payloadCallId) {
+    return;
+  }
+
+  if (payloadCallId) {
+    callId.value = payloadCallId;
   }
 
   if (fromTraderId === currentUserId.value) {
@@ -879,10 +968,10 @@ async function handleCallEvent(rawEvent) {
 
   if (signalType === 'call:decline') {
     markCallEnded('Declined');
-    active.value = false;
     callTerminated.value = true;
     allowLeaveAfterEnd.value = true;
     stopRingingTone();
+    cleanupConnection();
     return;
   }
 
@@ -928,7 +1017,7 @@ async function handleCallEvent(rawEvent) {
 
 function goBack() {
   if (isCallOngoing.value) {
-    showOngoingPrompt.value = true;
+    minimizeCall();
     return;
   }
 
@@ -946,10 +1035,15 @@ async function initializeCallPage() {
   durationSeconds.value = 0;
   endedDurationSeconds.value = 0;
 
-  const parsedMode = String(route.query.mode || 'audio').toLowerCase();
+  const parsedMode = String(route.query.mode || ongoingCallState.mode || 'audio').toLowerCase();
   callMode.value = parsedMode === 'video' ? 'video' : 'audio';
   const parsedCallId = Number(route.query.callId);
   callId.value = Number.isInteger(parsedCallId) && parsedCallId > 0 ? parsedCallId : null;
+
+  const isReopeningMinimized =
+    ongoingCallState.active &&
+    ongoingCallState.role === 'trader' &&
+    Number(ongoingCallState.partnerId || 0) === partnerId.value;
 
   if (!Number.isInteger(partnerId.value) || partnerId.value <= 0) {
     feedback.value = 'Invalid call target.';
@@ -957,6 +1051,12 @@ async function initializeCallPage() {
   }
 
   await loadPartnerInfo();
+
+  if (isReopeningMinimized) {
+    await recoverFromMinimizedSession();
+    return;
+  }
+
   ensureTraderRealtimeStream();
   unsubscribeCall = subscribeTraderRealtime('chat-call', (rawEvent) => {
     handleCallEvent(rawEvent).catch((error) => {
@@ -986,6 +1086,7 @@ watch(
 
 onMounted(() => {
   document.body.style.overflow = 'hidden';
+  persistCallOnUnmount.value = false;
   initializeCallPage();
   window.addEventListener('resize', handleViewportResize);
   window.visualViewport?.addEventListener?.('resize', handleViewportResize);
@@ -998,6 +1099,10 @@ watch(showVideoStreams, (visible) => {
 });
 
 onBeforeRouteLeave(() => {
+  if (persistCallOnUnmount.value) {
+    return true;
+  }
+
   if (isCallOngoing.value) {
     showOngoingPrompt.value = true;
     return false;
@@ -1007,6 +1112,14 @@ onBeforeRouteLeave(() => {
 });
 
 onUnmounted(() => {
+  document.body.style.overflow = '';
+  window.removeEventListener('resize', handleViewportResize);
+  window.visualViewport?.removeEventListener?.('resize', handleViewportResize);
+
+  if (persistCallOnUnmount.value) {
+    return;
+  }
+
   if (unsubscribeCall) {
     unsubscribeCall();
     unsubscribeCall = null;
@@ -1019,11 +1132,18 @@ onUnmounted(() => {
   }
   clearEndRedirectTimer();
   stopDurationTicker();
-  document.body.style.overflow = '';
-  window.removeEventListener('resize', handleViewportResize);
-  window.visualViewport?.removeEventListener?.('resize', handleViewportResize);
   cleanupConnection();
+  clearOngoingCallSession();
 });
+
+watch(
+  () => [active.value, callMode.value, partner.value?.name, callTerminated.value],
+  () => {
+    if (isCallOngoing.value && !callTerminated.value) {
+      syncOngoingCallSession(ongoingCallState.minimized);
+    }
+  }
+);
 </script>
 
 <template>
@@ -1109,6 +1229,11 @@ onUnmounted(() => {
         title="Flip camera"
       >
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h7l2-2 2 2v5h-2V9h-2l2 2-1.4 1.4L10.2 8l4.4-4.4L16 5H7zm10 10H10l-2 2-2-2v-5h2v3h2l-2-2 1.4-1.4L13.8 16l-4.4 4.4L8 19h9z" /></svg>
+
+      </button>
+
+      <button type="button" class="icon-btn" @click="minimizeCall" title="Minimize call">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16h14v2H5z" /></svg>
       </button>
 
       <button type="button" class="icon-btn end" @click="endCall(true)" title="End call">

@@ -2,6 +2,7 @@
 import { computed, ref, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import ConfirmationModal from '../../components/ConfirmationModal.vue';
+import OngoingCallMini from '../../components/OngoingCallMini.vue';
 import TraderSidebar from '../../components/TraderSidebar.vue';
 import {
   fetchMe,
@@ -434,6 +435,8 @@ onUnmounted(() => {
       @confirm="confirmLogout"
       @cancel="cancelLogout"
     />
+
+    <OngoingCallMini role="trader" />
   </section>
 </template>
 

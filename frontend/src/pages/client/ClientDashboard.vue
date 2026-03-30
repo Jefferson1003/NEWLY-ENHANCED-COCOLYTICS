@@ -3,6 +3,7 @@ import { onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import ClientSidebar from '../../components/ClientSidebar.vue';
 import ConfirmationModal from '../../components/ConfirmationModal.vue';
+import OngoingCallMini from '../../components/OngoingCallMini.vue';
 import {
   fetchClientMessageContacts,
   fetchMe,
@@ -326,6 +327,8 @@ onUnmounted(() => {
       @confirm="confirmLogout"
       @cancel="cancelLogout"
     />
+
+    <OngoingCallMini role="client" />
   </section>
 </template>
 
