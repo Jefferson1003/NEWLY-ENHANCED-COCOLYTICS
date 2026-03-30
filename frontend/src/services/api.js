@@ -412,9 +412,140 @@ export function sendTraderCallSignal(traderId, signalType, payload = {}) {
   });
 }
 
+export function fetchClientMessageContacts() {
+  return request('/api/client/messages/contacts');
+}
+
+export function fetchMessagesWithAdmin(adminId) {
+  return request(`/api/client/messages/${adminId}`);
+}
+
+export function sendMessageToAdmin(adminId, messageText, options = {}) {
+  const replyToMessageId = Number(options.replyToMessageId);
+  const safeReplyToMessageId = Number.isInteger(replyToMessageId) && replyToMessageId > 0
+    ? replyToMessageId
+    : null;
+
+  if (options.messageImageFile) {
+    const formData = new FormData();
+    formData.append('messageText', String(messageText || ''));
+    if (safeReplyToMessageId) {
+      formData.append('replyToMessageId', String(safeReplyToMessageId));
+    }
+    formData.append('messageImage', options.messageImageFile);
+
+    return request(`/api/client/messages/${adminId}`, {
+      method: 'POST',
+      body: formData,
+    }, {
+      successMessage: 'Message sent.',
+    });
+  }
+
+  return request(`/api/client/messages/${adminId}`, {
+    method: 'POST',
+    body: JSON.stringify({
+      messageText,
+      replyToMessageId: safeReplyToMessageId,
+    }),
+  }, {
+    successMessage: 'Message sent.',
+  });
+}
+
+export function heartbeatClientMessagePresence() {
+  return request('/api/client/messages/presence/heartbeat', {
+    method: 'POST',
+  }, {
+    toastError: false,
+    toastSuccess: false,
+  });
+}
+
+export function sendClientCallSignal(adminId, signalType, payload = {}) {
+  return request(`/api/client/messages/${adminId}/call-signal`, {
+    method: 'POST',
+    body: JSON.stringify({ signalType, payload }),
+  }, {
+    toastError: false,
+    toastSuccess: false,
+  });
+}
+
+export function fetchAdminMessageContacts() {
+  return request('/api/admin/messages/contacts');
+}
+
+export function fetchMessagesWithUser(userId) {
+  return request(`/api/admin/messages/${userId}`);
+}
+
+export function sendMessageToUser(userId, messageText, options = {}) {
+  const replyToMessageId = Number(options.replyToMessageId);
+  const safeReplyToMessageId = Number.isInteger(replyToMessageId) && replyToMessageId > 0
+    ? replyToMessageId
+    : null;
+
+  if (options.messageImageFile) {
+    const formData = new FormData();
+    formData.append('messageText', String(messageText || ''));
+    if (safeReplyToMessageId) {
+      formData.append('replyToMessageId', String(safeReplyToMessageId));
+    }
+    formData.append('messageImage', options.messageImageFile);
+
+    return request(`/api/admin/messages/${userId}`, {
+      method: 'POST',
+      body: formData,
+    }, {
+      successMessage: 'Message sent.',
+    });
+  }
+
+  return request(`/api/admin/messages/${userId}`, {
+    method: 'POST',
+    body: JSON.stringify({
+      messageText,
+      replyToMessageId: safeReplyToMessageId,
+    }),
+  }, {
+    successMessage: 'Message sent.',
+  });
+}
+
+export function heartbeatAdminMessagePresence() {
+  return request('/api/admin/messages/presence/heartbeat', {
+    method: 'POST',
+  }, {
+    toastError: false,
+    toastSuccess: false,
+  });
+}
+
+export function sendAdminCallSignal(userId, signalType, payload = {}) {
+  return request(`/api/admin/messages/${userId}/call-signal`, {
+    method: 'POST',
+    body: JSON.stringify({ signalType, payload }),
+  }, {
+    toastError: false,
+    toastSuccess: false,
+  });
+}
+
 export function getTraderMessageStreamUrl() {
+  return getRoleMessageStreamUrl('/api/trader/messages/stream');
+}
+
+export function getClientMessageStreamUrl() {
+  return getRoleMessageStreamUrl('/api/client/messages/stream');
+}
+
+export function getAdminMessageStreamUrl() {
+  return getRoleMessageStreamUrl('/api/admin/messages/stream');
+}
+
+function getRoleMessageStreamUrl(streamPath) {
   const token = getToken();
-  const streamPath = '/api/trader/messages/stream';
   if (!token) {
     return `${API_BASE_URL}${streamPath}`;
   }

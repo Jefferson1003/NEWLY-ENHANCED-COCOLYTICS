@@ -59,6 +59,12 @@ const emit = defineEmits(['logout', 'close']);
           <span>Archived Users</span>
         </span>
       </router-link>
+      <router-link to="/admin/messages" @click="emit('close')">
+        <span class="nav-main">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H8l-5 4V7a2 2 0 0 1 2-2zm2 4v2h12V9zm0 4v2h8v-2z"/></svg>
+          <span>Messages</span>
+        </span>
+      </router-link>
     </nav>
 
     <button type="button" class="logout" @click="emit('logout')">

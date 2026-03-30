@@ -102,6 +102,66 @@ export async function listTraderMessageContacts(traderId) {
   return rows;
 }
 
+export async function listMessageContactsByRoles(currentUserId, allowedRoles = []) {
+  const normalizedRoles = Array.isArray(allowedRoles)
+    ? allowedRoles.map((role) => String(role || '').trim().toLowerCase()).filter(Boolean)
+    : [];
+
+  if (!normalizedRoles.length) {
+    return [];
+  }
+
+  const rolePlaceholders = normalizedRoles.map(() => '?').join(', ');
+  const [rows] = await pool.execute(
+    `
+      SELECT
+        u.id AS partner_id,
+        COALESCE(NULLIF(u.profile_name, ''), u.full_name) AS partner_name,
+        u.role AS partner_role,
+        u.profile_image_path,
+        u.last_seen_at,
+        c.id AS conversation_id,
+        CASE
+          WHEN NULLIF(TRIM(COALESCE(lm.message_text, '')), '') IS NOT NULL THEN lm.message_text
+          WHEN lm.message_image_path IS NOT NULL THEN '[Image]'
+          ELSE ''
+        END AS last_message,
+        lm.sender_id AS last_sender_id,
+        lm.created_at AS last_message_at,
+        COALESCE(um.unread_count, 0) AS unread_count
+      FROM users u
+      LEFT JOIN chat_conversations c
+        ON c.trader_one_id = LEAST(u.id, ?)
+       AND c.trader_two_id = GREATEST(u.id, ?)
+      LEFT JOIN (
+        SELECT m1.conversation_id, m1.message_text, m1.message_image_path, m1.sender_id, m1.created_at
+        FROM chat_messages m1
+        INNER JOIN (
+          SELECT conversation_id, MAX(id) AS max_id
+          FROM chat_messages
+          GROUP BY conversation_id
+        ) latest ON latest.max_id = m1.id
+      ) lm ON lm.conversation_id = c.id
+      LEFT JOIN (
+        SELECT conversation_id, COUNT(*) AS unread_count
+        FROM chat_messages
+        WHERE receiver_id = ? AND is_read = 0
+        GROUP BY conversation_id
+      ) um ON um.conversation_id = c.id
+      WHERE u.role IN (${rolePlaceholders})
+        AND u.id != ?
+        AND COALESCE(u.is_archived, 0) = 0
+      ORDER BY
+        CASE WHEN lm.created_at IS NULL THEN 1 ELSE 0 END,
+        lm.created_at DESC,
+        partner_name ASC
+    `,
+    [currentUserId, currentUserId, currentUserId, ...normalizedRoles, currentUserId]
+  );
+
+  return rows;
+}
+
 export async function listMessagesBetweenTraders(currentTraderId, otherTraderId, limit = 80) {
   const currentId = Number(currentTraderId);
   const otherId = Number(otherTraderId);
