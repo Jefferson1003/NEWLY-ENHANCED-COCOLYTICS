@@ -11,6 +11,7 @@ import {
   fetchTraderSalesOrders,
   sendTraderCallSignal,
 } from '../../services/api';
+import { toastInfo } from '../../services/toast';
 import { clearSession, getUser, SESSION_UPDATED_EVENT } from '../../services/session';
 import { ensureTraderRealtimeStream, subscribeTraderRealtime } from '../../services/traderRealtime';
 
@@ -26,8 +27,10 @@ const toAcceptCount = ref(0);
 const marketplaceToReceiveCount = ref(0);
 const incomingCall = ref(null);
 let unsubscribeCallEvent = null;
+let unsubscribeMessageEvent = null;
 let incomingRingAudioContext = null;
 let incomingRingTimer = null;
+const shownMessageToastIds = new Set();
 
 const isCallRoute = computed(() => route.name === 'trader-call');
 
@@ -143,6 +146,33 @@ async function handleIncomingCallEvent(rawEvent) {
       stopIncomingRingtone();
     }
   }
+}
+
+async function handleIncomingMessageEvent(rawEvent) {
+  const payload = JSON.parse(rawEvent?.data || '{}');
+  if (payload?.type !== 'message:new' || !payload?.message) {
+    return;
+  }
+
+  const messageId = Number(payload?.message?.id || 0);
+  if (messageId > 0 && shownMessageToastIds.has(messageId)) {
+    return;
+  }
+
+  if (messageId > 0) {
+    shownMessageToastIds.add(messageId);
+  }
+
+  const senderId = Number(payload?.message?.senderId || 0);
+  const currentUserId = Number(getUser()?.id || 0);
+  if (!currentUserId || senderId === currentUserId) {
+    return;
+  }
+
+  const senderName = await resolveTraderName(senderId);
+  const preview = String(payload?.message?.messageText || '').trim()
+    || (payload?.message?.messageImagePath ? 'Sent an image.' : 'New message received.');
+  toastInfo(preview, senderName, 2800);
 }
 
 function acceptIncomingCall() {
@@ -306,6 +336,11 @@ onMounted(() => {
       console.error('[trader] incoming call handling failed', error);
     });
   });
+  unsubscribeMessageEvent = subscribeTraderRealtime('chat-message', (rawEvent) => {
+    handleIncomingMessageEvent(rawEvent).catch((error) => {
+      console.error('[trader] incoming message handling failed', error);
+    });
+  });
 
   window.addEventListener(SESSION_UPDATED_EVENT, syncProfileFromSession);
   window.addEventListener(INVENTORY_UPDATED_EVENT, loadLowStockCount);
@@ -319,6 +354,13 @@ onUnmounted(() => {
     unsubscribeCallEvent();
     unsubscribeCallEvent = null;
   }
+
+  if (unsubscribeMessageEvent) {
+    unsubscribeMessageEvent();
+    unsubscribeMessageEvent = null;
+  }
+
+  shownMessageToastIds.clear();
 
   stopIncomingRingtone();
   if (incomingRingAudioContext) {

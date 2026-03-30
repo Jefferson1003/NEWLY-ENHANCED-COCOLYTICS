@@ -422,6 +422,16 @@ export function sendTraderCallSignal(traderId, signalType, payload = {}) {
   });
 }
 
+export function sendTraderTypingStatus(traderId, isTyping) {
+  return request(`/api/trader/messages/${traderId}/typing`, {
+    method: 'POST',
+    body: JSON.stringify({ isTyping: Boolean(isTyping) }),
+  }, {
+    toastError: false,
+    toastSuccess: false,
+  });
+}
+
 export function fetchClientMessageContacts() {
   return request('/api/client/messages/contacts');
 }
@@ -482,6 +492,16 @@ export function sendClientCallSignal(adminId, signalType, payload = {}) {
   });
 }
 
+export function sendClientTypingStatus(adminId, isTyping) {
+  return request(`/api/client/messages/${adminId}/typing`, {
+    method: 'POST',
+    body: JSON.stringify({ isTyping: Boolean(isTyping) }),
+  }, {
+    toastError: false,
+    toastSuccess: false,
+  });
+}
+
 export function fetchAdminMessageContacts() {
   return request('/api/admin/messages/contacts');
 }
@@ -536,6 +556,16 @@ export function sendAdminCallSignal(userId, signalType, payload = {}) {
   return request(`/api/admin/messages/${userId}/call-signal`, {
     method: 'POST',
     body: JSON.stringify({ signalType, payload }),
+  }, {
+    toastError: false,
+    toastSuccess: false,
+  });
+}
+
+export function sendAdminTypingStatus(userId, isTyping) {
+  return request(`/api/admin/messages/${userId}/typing`, {
+    method: 'POST',
+    body: JSON.stringify({ isTyping: Boolean(isTyping) }),
   }, {
     toastError: false,
     toastSuccess: false,

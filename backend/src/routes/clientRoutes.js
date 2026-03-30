@@ -22,5 +22,6 @@ clientRouter.post('/messages/:partnerId', (req, res, next) => {
 	});
 }, clientChatHandlers.sendMessageToPartner);
 clientRouter.post('/messages/:partnerId/call-signal', clientChatHandlers.sendCallSignalToPartner);
+clientRouter.post('/messages/:partnerId/typing', clientChatHandlers.sendTypingStatusToPartner);
 
 export default clientRouter;

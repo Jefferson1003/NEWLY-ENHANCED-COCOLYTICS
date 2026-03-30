@@ -62,6 +62,7 @@ traderRouter.post('/messages/:partnerId', (req, res, next) => {
   });
 }, traderChatHandlers.sendMessageToPartner);
 traderRouter.post('/messages/:partnerId/call-signal', traderChatHandlers.sendCallSignalToPartner);
+traderRouter.post('/messages/:partnerId/typing', traderChatHandlers.sendTypingStatusToPartner);
 traderRouter.get('/cart', listCart);
 traderRouter.post('/cart', addItemToCart);
 traderRouter.delete('/cart/:id', removeCartItem);

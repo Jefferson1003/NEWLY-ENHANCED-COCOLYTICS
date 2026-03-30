@@ -8,6 +8,7 @@ import {
   fetchMe,
   sendClientCallSignal,
 } from '../../services/api';
+import { toastInfo } from '../../services/toast';
 import { clearSession, saveSession, getToken, getUser } from '../../services/session';
 import { ensureClientRealtimeStream, subscribeClientRealtime } from '../../services/clientRealtime';
 
@@ -19,8 +20,10 @@ const showLogoutConfirm = ref(false);
 const incomingCall = ref(null);
 let pollTimer;
 let unsubscribeCallEvent = null;
+let unsubscribeMessageEvent = null;
 let incomingRingAudioContext = null;
 let incomingRingTimer = null;
+const shownMessageToastIds = new Set();
 
 function playIncomingRingBurst() {
   if (!incomingRingAudioContext) {
@@ -129,6 +132,33 @@ async function handleIncomingCallEvent(rawEvent) {
   }
 }
 
+async function handleIncomingMessageEvent(rawEvent) {
+  const payload = JSON.parse(rawEvent?.data || '{}');
+  if (payload?.type !== 'message:new' || !payload?.message) {
+    return;
+  }
+
+  const messageId = Number(payload?.message?.id || 0);
+  if (messageId > 0 && shownMessageToastIds.has(messageId)) {
+    return;
+  }
+
+  if (messageId > 0) {
+    shownMessageToastIds.add(messageId);
+  }
+
+  const senderId = Number(payload?.message?.senderId || 0);
+  const currentUserId = Number(getUser()?.id || 0);
+  if (!currentUserId || senderId === currentUserId) {
+    return;
+  }
+
+  const senderName = await resolveAdminName(senderId);
+  const preview = String(payload?.message?.messageText || '').trim()
+    || (payload?.message?.messageImagePath ? 'Sent an image.' : 'New message received.');
+  toastInfo(preview, senderName, 2800);
+}
+
 function acceptIncomingCall() {
   if (!incomingCall.value) {
     return;
@@ -212,6 +242,11 @@ onMounted(async () => {
       console.error('[client] incoming call handling failed', error);
     });
   });
+  unsubscribeMessageEvent = subscribeClientRealtime('chat-message', (rawEvent) => {
+    handleIncomingMessageEvent(rawEvent).catch((error) => {
+      console.error('[client] incoming message handling failed', error);
+    });
+  });
 });
 
 onUnmounted(() => {
@@ -223,6 +258,13 @@ onUnmounted(() => {
     unsubscribeCallEvent();
     unsubscribeCallEvent = null;
   }
+
+  if (unsubscribeMessageEvent) {
+    unsubscribeMessageEvent();
+    unsubscribeMessageEvent = null;
+  }
+
+  shownMessageToastIds.clear();
 
   stopIncomingRingtone();
   if (incomingRingAudioContext) {

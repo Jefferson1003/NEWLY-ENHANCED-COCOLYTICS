@@ -336,6 +336,39 @@ function createChatHandlers(options) {
     }
   }
 
+  async function sendTypingStatusToPartner(req, res) {
+    const partnerId = Number(req.params.partnerId);
+    const isTyping = Boolean(req.body?.isTyping);
+
+    if (!Number.isInteger(partnerId) || partnerId <= 0) {
+      return res.status(400).json({ error: `Invalid ${invalidPartnerLabel} ID.` });
+    }
+
+    if (partnerId === req.auth.id) {
+      return res.status(400).json({ error: 'You cannot message yourself.' });
+    }
+
+    try {
+      await updateUserLastSeenById(req.auth.id);
+      const partner = await findUserById(partnerId);
+      if (!partner || !allowedPartnerRoles.includes(String(partner.role || '').toLowerCase()) || partner.is_archived) {
+        return res.status(404).json({ error: `${invalidPartnerLabel} not found.` });
+      }
+
+      pushTraderEvent(partnerId, 'chat-presence', {
+        type: 'typing:update',
+        traderId: Number(req.auth.id),
+        partnerId,
+        isTyping,
+        createdAt: new Date().toISOString(),
+      });
+
+      return res.status(200).json({ ok: true });
+    } catch {
+      return res.status(500).json({ error: 'Could not send typing status.' });
+    }
+  }
+
   return {
     listMessageContacts,
     streamMessageEvents,
@@ -343,6 +376,7 @@ function createChatHandlers(options) {
     listMessagesWithPartner,
     sendMessageToPartner,
     sendCallSignalToPartner,
+    sendTypingStatusToPartner,
     roleName,
   };
 }

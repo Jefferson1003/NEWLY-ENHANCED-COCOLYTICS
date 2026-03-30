@@ -7,6 +7,7 @@ import {
   heartbeatAdminMessagePresence,
   getAdminMessageStreamUrl,
   sendMessageToUser,
+  sendAdminTypingStatus,
 } from '../../services/api';
 import { toMediaUrl } from '../../services/media';
 import { getUser } from '../../services/session';
@@ -34,9 +35,13 @@ const threadOpened = ref(false);
 const pendingTraderName = ref('');
 const replyToMessage = ref(null);
 const nowTick = ref(Date.now());
+const typingByPartnerId = ref({});
 
 let presenceTimer = null;
 let nowTicker = null;
+let typingStopTimer = null;
+const typingResetTimers = new Map();
+let lastTypingSignalAt = 0;
 const SWIPE_REPLY_TRIGGER_PX = 56;
 const SWIPE_REPLY_MAX_PX = 72;
 
@@ -206,6 +211,10 @@ function toRelativeTime(value) {
 }
 
 function contactStatusLabel(contact) {
+  if (isPartnerTyping(contact?.traderId)) {
+    return 'Typing...';
+  }
+
   if (contact?.isOnline) {
     return 'Active now';
   }
@@ -223,7 +232,43 @@ function threadStatusLabel() {
     return '';
   }
 
+  if (isPartnerTyping(selectedContact.value.traderId)) {
+    return 'Typing...';
+  }
+
   return contactStatusLabel(selectedContact.value);
+}
+
+function isPartnerTyping(partnerId) {
+  const parsedId = Number(partnerId);
+  if (!Number.isInteger(parsedId) || parsedId <= 0) {
+    return false;
+  }
+
+  return Boolean(typingByPartnerId.value[parsedId]);
+}
+
+function setPartnerTyping(partnerId, isTyping) {
+  const parsedId = Number(partnerId);
+  if (!Number.isInteger(parsedId) || parsedId <= 0) {
+    return;
+  }
+
+  typingByPartnerId.value = { ...typingByPartnerId.value, [parsedId]: Boolean(isTyping) };
+
+  const existingTimer = typingResetTimers.get(parsedId);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+    typingResetTimers.delete(parsedId);
+  }
+
+  if (isTyping) {
+    const timeoutId = setTimeout(() => {
+      typingByPartnerId.value = { ...typingByPartnerId.value, [parsedId]: false };
+      typingResetTimers.delete(parsedId);
+    }, 3200);
+    typingResetTimers.set(parsedId, timeoutId);
+  }
 }
 
 function roleBadgeLabel(role) {
@@ -319,11 +364,58 @@ function handleLiveMessageEvent(rawEvent) {
 
 function handleLivePresenceEvent(rawEvent) {
   const payload = JSON.parse(rawEvent?.data || '{}');
+
+  if (payload?.type === 'typing:update') {
+    setPartnerTyping(payload?.traderId, Boolean(payload?.isTyping));
+    return;
+  }
+
   if (payload?.type !== 'presence:update') {
     return;
   }
 
   loadContacts();
+}
+
+async function sendTypingSignal(isTyping) {
+  const partnerId = Number(selectedTraderId.value || 0);
+  if (!Number.isInteger(partnerId) || partnerId <= 0) {
+    return;
+  }
+
+  try {
+    await sendAdminTypingStatus(partnerId, isTyping);
+  } catch {
+    // Typing signal failures should not interrupt chat flow.
+  }
+}
+
+function clearTypingStopTimer() {
+  if (typingStopTimer) {
+    clearTimeout(typingStopTimer);
+    typingStopTimer = null;
+  }
+}
+
+function onComposerInput() {
+  const hasText = String(messageText.value || '').trim().length > 0;
+
+  if (!hasText) {
+    clearTypingStopTimer();
+    sendTypingSignal(false);
+    return;
+  }
+
+  const now = Date.now();
+  if ((now - lastTypingSignalAt) >= 1300) {
+    lastTypingSignalAt = now;
+    sendTypingSignal(true);
+  }
+
+  clearTypingStopTimer();
+  typingStopTimer = setTimeout(() => {
+    sendTypingSignal(false);
+  }, 1500);
 }
 
 function openCallPage(mode = 'audio') {
@@ -376,6 +468,10 @@ function onComposerKeydown(event) {
 }
 
 async function selectContact(traderId) {
+  if (Number(selectedTraderId.value || 0) > 0 && Number(selectedTraderId.value) !== Number(traderId)) {
+    sendTypingSignal(false);
+  }
+
   const parsedId = Number(traderId);
   if (!Number.isInteger(parsedId) || parsedId <= 0) {
     return;
@@ -389,6 +485,7 @@ async function selectContact(traderId) {
 }
 
 function backToChats() {
+  sendTypingSignal(false);
   threadOpened.value = false;
 }
 
@@ -671,6 +768,9 @@ async function sendMessage() {
     return;
   }
 
+  clearTypingStopTimer();
+  await sendTypingSignal(false);
+
   sending.value = true;
   try {
     const data = await sendMessageToUser(selectedTraderId.value, text, {
@@ -707,6 +807,10 @@ onUnmounted(() => {
   if (selectedMessageImagePreview.value) {
     URL.revokeObjectURL(selectedMessageImagePreview.value);
   }
+  clearTypingStopTimer();
+  typingResetTimers.forEach((timerId) => clearTimeout(timerId));
+  typingResetTimers.clear();
+  sendTypingSignal(false);
   stopPresenceHeartbeat();
   stopNowTicker();
   closeMessageStream();
@@ -788,7 +892,7 @@ watch(selectedTraderId, async () => {
                   {{ roleBadgeLabel(contact.partnerRole) }}
                 </span>
               </p>
-              <p class="contact-presence" :class="{ online: contact.isOnline }">
+              <p class="contact-presence" :class="{ online: contact.isOnline, typing: isPartnerTyping(contact.traderId) }">
                 <span class="presence-dot" />
                 {{ contactStatusLabel(contact) }}
               </p>
@@ -821,7 +925,7 @@ watch(selectedTraderId, async () => {
                   {{ roleBadgeLabel(selectedContact.partnerRole) }}
                 </span>
               </div>
-              <p class="thread-status" :class="{ online: selectedContact.isOnline }">
+              <p class="thread-status" :class="{ online: selectedContact.isOnline, typing: isPartnerTyping(selectedContact?.traderId) }">
                 <span class="presence-dot" />
                 {{ threadStatusLabel() }}
               </p>
@@ -923,6 +1027,7 @@ watch(selectedTraderId, async () => {
             type="text"
             placeholder="Type your message..."
             :disabled="sending || !selectedTraderId"
+            @input="onComposerInput"
             @keydown="onComposerKeydown"
           />
           <button
@@ -1145,6 +1250,10 @@ watch(selectedTraderId, async () => {
   color: #9ddeb6;
 }
 
+.contact-presence.typing {
+  color: #ffd79d;
+}
+
 .presence-dot {
   width: 8px;
   height: 8px;
@@ -1245,6 +1354,10 @@ watch(selectedTraderId, async () => {
 
 .thread-status.online {
   color: #9ddeb6;
+}
+
+.thread-status.typing {
+  color: #ffd79d;
 }
 
 .thread-actions {

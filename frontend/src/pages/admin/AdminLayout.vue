@@ -8,6 +8,7 @@ import {
   fetchClients,
   sendAdminCallSignal,
 } from '../../services/api';
+import { toastInfo } from '../../services/toast';
 import { clearSession, getUser } from '../../services/session';
 import { ensureAdminRealtimeStream, subscribeAdminRealtime } from '../../services/adminRealtime';
 
@@ -18,8 +19,10 @@ const showLogoutConfirm = ref(false);
 const pendingClientCount = ref(0);
 const incomingCall = ref(null);
 let unsubscribeCallEvent = null;
+let unsubscribeMessageEvent = null;
 let incomingRingAudioContext = null;
 let incomingRingTimer = null;
+const shownMessageToastIds = new Set();
 
 const ADMIN_USERS_UPDATED_EVENT = 'cocolytics-admin-users-updated';
 
@@ -130,6 +133,33 @@ async function handleIncomingCallEvent(rawEvent) {
   }
 }
 
+async function handleIncomingMessageEvent(rawEvent) {
+  const payload = JSON.parse(rawEvent?.data || '{}');
+  if (payload?.type !== 'message:new' || !payload?.message) {
+    return;
+  }
+
+  const messageId = Number(payload?.message?.id || 0);
+  if (messageId > 0 && shownMessageToastIds.has(messageId)) {
+    return;
+  }
+
+  if (messageId > 0) {
+    shownMessageToastIds.add(messageId);
+  }
+
+  const senderId = Number(payload?.message?.senderId || 0);
+  const currentUserId = Number(getUser()?.id || 0);
+  if (!currentUserId || senderId === currentUserId) {
+    return;
+  }
+
+  const senderName = await resolveUserName(senderId);
+  const preview = String(payload?.message?.messageText || '').trim()
+    || (payload?.message?.messageImagePath ? 'Sent an image.' : 'New message received.');
+  toastInfo(preview, senderName, 2800);
+}
+
 function acceptIncomingCall() {
   if (!incomingCall.value) {
     return;
@@ -208,6 +238,11 @@ onMounted(() => {
       console.error('[admin] incoming call handling failed', error);
     });
   });
+  unsubscribeMessageEvent = subscribeAdminRealtime('chat-message', (rawEvent) => {
+    handleIncomingMessageEvent(rawEvent).catch((error) => {
+      console.error('[admin] incoming message handling failed', error);
+    });
+  });
   window.addEventListener(ADMIN_USERS_UPDATED_EVENT, loadPendingClientCount);
 });
 
@@ -216,6 +251,13 @@ onUnmounted(() => {
     unsubscribeCallEvent();
     unsubscribeCallEvent = null;
   }
+
+  if (unsubscribeMessageEvent) {
+    unsubscribeMessageEvent();
+    unsubscribeMessageEvent = null;
+  }
+
+  shownMessageToastIds.clear();
 
   stopIncomingRingtone();
   if (incomingRingAudioContext) {

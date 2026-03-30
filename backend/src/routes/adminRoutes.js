@@ -39,5 +39,6 @@ adminRouter.post('/messages/:partnerId', (req, res, next) => {
 	});
 }, adminChatHandlers.sendMessageToPartner);
 adminRouter.post('/messages/:partnerId/call-signal', adminChatHandlers.sendCallSignalToPartner);
+adminRouter.post('/messages/:partnerId/typing', adminChatHandlers.sendTypingStatusToPartner);
 
 export default adminRouter;
