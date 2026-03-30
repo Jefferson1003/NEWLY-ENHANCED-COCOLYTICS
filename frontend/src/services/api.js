@@ -229,6 +229,7 @@ export function createTraderProduct(payload) {
   formData.append('productName', payload.productName || '');
   formData.append('size', payload.size || '');
   formData.append('lengthCm', payload.lengthCm ?? '');
+  formData.append('productPrice', String(payload.productPrice ?? ''));
   formData.append('stockQuantity', String(payload.stockQuantity ?? ''));
 
   if (payload.productImage) {
@@ -248,6 +249,7 @@ export function updateTraderProduct(productId, payload) {
   formData.append('productName', payload.productName || '');
   formData.append('size', payload.size || '');
   formData.append('lengthCm', payload.lengthCm ?? '');
+  formData.append('productPrice', String(payload.productPrice ?? ''));
   formData.append('stockQuantity', String(payload.stockQuantity ?? ''));
 
   if (payload.productImage) {
