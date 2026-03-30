@@ -312,55 +312,124 @@ function formatCurrency(value) {
   }).format(Number(value || 0));
 }
 
+const excelCurrencyFormat = '[$₱-340A]#,##0.00';
+
 function applySheetTitleStyle(cell) {
-  cell.font = { name: 'Calibri', size: 16, bold: true, color: { argb: 'FFE8FFF4' } };
+  cell.font = { name: 'Calibri', size: 16, bold: true, color: { argb: 'FF111827' } };
   cell.alignment = { vertical: 'middle', horizontal: 'left' };
   cell.fill = {
     type: 'pattern',
     pattern: 'solid',
-    fgColor: { argb: 'FF0D3F4D' },
+    fgColor: { argb: 'FFF9FAFB' },
   };
   cell.border = {
-    top: { style: 'thin', color: { argb: 'FF78DFC1' } },
-    left: { style: 'thin', color: { argb: 'FF78DFC1' } },
-    bottom: { style: 'thin', color: { argb: 'FF78DFC1' } },
-    right: { style: 'thin', color: { argb: 'FF78DFC1' } },
+    top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+    left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+    bottom: { style: 'medium', color: { argb: 'FFD1D5DB' } },
+    right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+  };
+}
+
+function applyGeneratedStampStyle(cell) {
+  cell.font = { name: 'Calibri', size: 10, color: { argb: 'FF6B7280' } };
+  cell.alignment = { vertical: 'middle', horizontal: 'left' };
+  cell.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FFFFFFFF' },
+  };
+  cell.border = {
+    top: { style: 'thin', color: { argb: 'FFF3F4F6' } },
+    left: { style: 'thin', color: { argb: 'FFF3F4F6' } },
+    bottom: { style: 'thin', color: { argb: 'FFF3F4F6' } },
+    right: { style: 'thin', color: { argb: 'FFF3F4F6' } },
+  };
+}
+
+function applySectionHeaderStyle(cell) {
+  cell.font = { name: 'Calibri', size: 12, bold: true, color: { argb: 'FF1F2937' } };
+  cell.alignment = { vertical: 'middle', horizontal: 'left' };
+  cell.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FFF3F4F6' },
+  };
+  cell.border = {
+    top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+    left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+    bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+    right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
   };
 }
 
 function applyTableHeaderStyle(row) {
   row.eachCell((cell) => {
-    cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFD8FFF2' } };
+    cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF111827' } };
     cell.fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: 'FF155160' },
+      fgColor: { argb: 'FFF3F4F6' },
     };
-    cell.alignment = { vertical: 'middle', horizontal: 'left' };
+    cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
     cell.border = {
-      top: { style: 'thin', color: { argb: 'FF245F6A' } },
-      left: { style: 'thin', color: { argb: 'FF245F6A' } },
-      bottom: { style: 'thin', color: { argb: 'FF245F6A' } },
-      right: { style: 'thin', color: { argb: 'FF245F6A' } },
+      top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+      left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+      bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+      right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
     };
   });
+  row.height = 22;
 }
 
 function applyTableBodyStyle(row, isEven) {
   row.eachCell((cell) => {
-    cell.font = { name: 'Calibri', size: 10, color: { argb: 'FFD8FFF1' } };
+    cell.font = { name: 'Calibri', size: 10, color: { argb: 'FF1F2937' } };
     cell.fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: isEven ? 'FF0E3C47' : 'FF0A2D38' },
+      fgColor: { argb: isEven ? 'FFFFFFFF' : 'FFF9FAFB' },
     };
-    cell.alignment = { vertical: 'middle', horizontal: 'left' };
+    cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
     cell.border = {
-      top: { style: 'thin', color: { argb: 'FF174D58' } },
-      left: { style: 'thin', color: { argb: 'FF174D58' } },
-      bottom: { style: 'thin', color: { argb: 'FF174D58' } },
-      right: { style: 'thin', color: { argb: 'FF174D58' } },
+      top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+      left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+      bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+      right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
     };
+  });
+  row.height = 20;
+}
+
+function addSpacerRow(worksheet, height = 8) {
+  const spacer = worksheet.addRow([]);
+  spacer.height = height;
+}
+
+function autoFitColumns(worksheet, { min = 12, max = 48, padding = 2 } = {}) {
+  worksheet.columns.forEach((column) => {
+    let longest = min;
+    column.eachCell({ includeEmpty: true }, (cell) => {
+      const value = cell.value;
+      let length = 0;
+
+      if (value == null) {
+        length = 0;
+      } else if (typeof value === 'string') {
+        length = value.length;
+      } else if (typeof value === 'number') {
+        length = value.toString().length;
+      } else if (typeof value === 'object' && value.richText) {
+        length = value.richText.map((part) => part.text || '').join('').length;
+      } else {
+        length = String(value).length;
+      }
+
+      if (length > longest) {
+        longest = length;
+      }
+    });
+
+    column.width = Math.max(min, Math.min(max, longest + padding));
   });
 }
 
@@ -380,28 +449,26 @@ async function exportReportsToExcel() {
 
     const overview = workbook.addWorksheet('Operations Report', { views: [{ showGridLines: false }] });
     overview.columns = [
-      { width: 34 },
-      { width: 22 },
-      { width: 22 },
-      { width: 22 },
+      { width: 16 },
+      { width: 16 },
+      { width: 16 },
+      { width: 16 },
     ];
 
     overview.mergeCells('A1:D1');
     overview.getCell('A1').value = 'Cocolytics Trader Operations Report';
     applySheetTitleStyle(overview.getCell('A1'));
+    overview.getRow(1).height = 30;
 
     overview.mergeCells('A2:D2');
     overview.getCell('A2').value = `Generated: ${new Date().toLocaleString()}`;
-    overview.getCell('A2').font = { name: 'Calibri', size: 10, color: { argb: 'FFBDEEDC' } };
-    overview.getCell('A2').fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FF0A2F3A' },
-    };
+    applyGeneratedStampStyle(overview.getCell('A2'));
+    overview.getRow(2).height = 20;
 
     const summaryHeader = overview.addRow(['Summary Statistics', '', '', '']);
     overview.mergeCells(`A${summaryHeader.number}:D${summaryHeader.number}`);
-    applySheetTitleStyle(overview.getCell(`A${summaryHeader.number}`));
+    applySectionHeaderStyle(overview.getCell(`A${summaryHeader.number}`));
+    summaryHeader.height = 24;
 
     const summaryTableHeader = overview.addRow(['Metric', 'Value', 'Metric', 'Value']);
     applyTableHeaderStyle(summaryTableHeader);
@@ -417,11 +484,12 @@ async function exportReportsToExcel() {
       applyTableBodyStyle(row, index % 2 === 0);
     });
 
-    overview.addRow([]);
+    addSpacerRow(overview);
 
     const topHeader = overview.addRow(['Top Products', '', '', '']);
     overview.mergeCells(`A${topHeader.number}:D${topHeader.number}`);
-    applySheetTitleStyle(overview.getCell(`A${topHeader.number}`));
+    applySectionHeaderStyle(overview.getCell(`A${topHeader.number}`));
+    topHeader.height = 24;
 
     const topTableHeader = overview.addRow(['Product', 'Size', 'Quantity', 'Tag']);
     applyTableHeaderStyle(topTableHeader);
@@ -433,13 +501,15 @@ async function exportReportsToExcel() {
     topRows.forEach((entry, index) => {
       const row = overview.addRow(entry);
       applyTableBodyStyle(row, index % 2 === 0);
+      row.getCell(3).alignment = { vertical: 'middle', horizontal: 'right' };
     });
 
-    overview.addRow([]);
+    addSpacerRow(overview);
 
     const kpiHeader = overview.addRow(['Report KPI Cards', '', '', '']);
     overview.mergeCells(`A${kpiHeader.number}:D${kpiHeader.number}`);
-    applySheetTitleStyle(overview.getCell(`A${kpiHeader.number}`));
+    applySectionHeaderStyle(overview.getCell(`A${kpiHeader.number}`));
+    kpiHeader.height = 24;
 
     const kpiTableHeader = overview.addRow(['Title', 'Value', 'Subtitle', 'Details']);
     applyTableHeaderStyle(kpiTableHeader);
@@ -452,19 +522,23 @@ async function exportReportsToExcel() {
         `${card.footerLeft} | ${card.footerRight}`,
       ]);
       applyTableBodyStyle(row, index % 2 === 0);
+      row.height = 24;
     });
+
+    autoFitColumns(overview, { min: 14, max: 52, padding: 3 });
 
     const monthlySheet = workbook.addWorksheet('Monthly Breakdown', { views: [{ showGridLines: false }] });
     monthlySheet.columns = [
-      { width: 28 },
-      { width: 14 },
       { width: 16 },
-      { width: 18 },
+      { width: 16 },
+      { width: 16 },
+      { width: 16 },
     ];
 
     monthlySheet.mergeCells('A1:D1');
     monthlySheet.getCell('A1').value = 'Monthly Breakdown';
     applySheetTitleStyle(monthlySheet.getCell('A1'));
+    monthlySheet.getRow(1).height = 28;
 
     const monthlyHeader = monthlySheet.addRow(['Month', 'Orders', 'Items Sold', 'Revenue']);
     applyTableHeaderStyle(monthlyHeader);
@@ -481,20 +555,26 @@ async function exportReportsToExcel() {
         Number(entry.revenue || 0),
       ]);
       applyTableBodyStyle(row, index % 2 === 0);
-      row.getCell(4).numFmt = '[$₱-340A]#,##0.00';
+      row.getCell(2).alignment = { vertical: 'middle', horizontal: 'right' };
+      row.getCell(3).alignment = { vertical: 'middle', horizontal: 'right' };
+      row.getCell(4).alignment = { vertical: 'middle', horizontal: 'right' };
+      row.getCell(4).numFmt = excelCurrencyFormat;
     });
+
+    autoFitColumns(monthlySheet, { min: 12, max: 30, padding: 2 });
 
     const yearlySheet = workbook.addWorksheet('Yearly Breakdown', { views: [{ showGridLines: false }] });
     yearlySheet.columns = [
-      { width: 18 },
-      { width: 14 },
       { width: 16 },
-      { width: 18 },
+      { width: 16 },
+      { width: 16 },
+      { width: 16 },
     ];
 
     yearlySheet.mergeCells('A1:D1');
     yearlySheet.getCell('A1').value = 'Yearly Breakdown';
     applySheetTitleStyle(yearlySheet.getCell('A1'));
+    yearlySheet.getRow(1).height = 28;
 
     const yearlyHeader = yearlySheet.addRow(['Year', 'Orders', 'Items Sold', 'Revenue']);
     applyTableHeaderStyle(yearlyHeader);
@@ -511,8 +591,13 @@ async function exportReportsToExcel() {
         Number(entry.revenue || 0),
       ]);
       applyTableBodyStyle(row, index % 2 === 0);
-      row.getCell(4).numFmt = '[$₱-340A]#,##0.00';
+      row.getCell(2).alignment = { vertical: 'middle', horizontal: 'right' };
+      row.getCell(3).alignment = { vertical: 'middle', horizontal: 'right' };
+      row.getCell(4).alignment = { vertical: 'middle', horizontal: 'right' };
+      row.getCell(4).numFmt = excelCurrencyFormat;
     });
+
+    autoFitColumns(yearlySheet, { min: 12, max: 30, padding: 2 });
 
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([
