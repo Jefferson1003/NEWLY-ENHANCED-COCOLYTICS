@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import ConfirmationModal from '../../components/ConfirmationModal.vue';
 import {
@@ -22,7 +22,9 @@ import { getUser } from '../../services/session';
 
 const router = useRouter();
 const route = useRoute();
-const activeTab = ref('add-product');
+const MARKETPLACE_HUB_TABS = ['inventory', 'marketplace', 'cart', 'orders'];
+const MANAGE_PRODUCTS_TABS = ['add-product', 'inventory'];
+const activeTab = ref('marketplace');
 
 const form = reactive({
   productName: '',
@@ -74,6 +76,13 @@ const editProductForm = reactive({
 
 const orderCount = computed(() => orders.value.length);
 const inventoryCount = computed(() => products.value.length);
+const isManageProductsRoute = computed(() => String(route.name || '') === 'trader-manage-products');
+const pageTitle = computed(() => (isManageProductsRoute.value ? 'Manage Products' : 'Marketplace Hub'));
+const pageSubtitle = computed(() => (
+  isManageProductsRoute.value
+    ? 'Add new products and manage your inventory in one place.'
+    : 'Manage inventory, browse traders, shop, and track orders.'
+));
 const orderSearch = ref('');
 const orderStatusFilter = ref('all');
 
@@ -647,6 +656,16 @@ function emitInventoryUpdated() {
   window.dispatchEvent(new CustomEvent('cocolytics-inventory-updated'));
 }
 
+function normalizeTabForRoute(preferredTab) {
+  const normalized = String(preferredTab || '').trim().toLowerCase();
+
+  if (isManageProductsRoute.value) {
+    return MANAGE_PRODUCTS_TABS.includes(normalized) ? normalized : 'add-product';
+  }
+
+  return MARKETPLACE_HUB_TABS.includes(normalized) ? normalized : 'marketplace';
+}
+
 async function saveEditedProduct() {
   const product = editingProduct.value;
   if (!product) return;
@@ -786,6 +805,11 @@ async function loadOrders(options = {}) {
 
 async function refreshActiveTabData() {
   const active = String(activeTab.value || '').trim().toLowerCase();
+
+  if (active === 'add-product') {
+    await loadProducts({ silent: true });
+    return;
+  }
 
   if (active === 'inventory') {
     await loadProducts({ silent: true });
@@ -943,10 +967,7 @@ async function submitProduct() {
 }
 
 onMounted(async () => {
-  const requestedTab = String(route.query.tab || '').trim().toLowerCase();
-  if (requestedTab === 'cart') {
-    activeTab.value = 'cart';
-  }
+  activeTab.value = normalizeTabForRoute(route.query.tab);
 
   if (String(route.query.addressSaved || '') === '1') {
     feedback.value = 'Address saved successfully.';
@@ -987,35 +1008,75 @@ onMounted(async () => {
 onUnmounted(() => {
   stopMarketplaceRealtimePolling();
 });
+
+watch(
+  () => route.name,
+  () => {
+    activeTab.value = normalizeTabForRoute(activeTab.value);
+  }
+);
 </script>
 
 <template>
   <section class="page">
     <header class="head">
       <p class="kicker">Trader Marketplace</p>
-      <h1>Marketplace Hub</h1>
-      <p class="sub">Manage inventory, browse traders, shop, and track orders.</p>
+      <h1>{{ pageTitle }}</h1>
+      <p class="sub">{{ pageSubtitle }}</p>
     </header>
 
     <nav class="tabs">
-      <button type="button" :class="{ active: activeTab === 'add-product' }" @click="activeTab = 'add-product'">
+      <button
+        v-if="isManageProductsRoute"
+        type="button"
+        :class="{ active: activeTab === 'add-product' }"
+        @click="activeTab = 'add-product'"
+      >
         Add Product
       </button>
-      <button type="button" :class="{ active: activeTab === 'inventory' }" @click="activeTab = 'inventory'">
+      <button
+        v-if="isManageProductsRoute"
+        type="button"
+        :class="{ active: activeTab === 'inventory' }"
+        @click="activeTab = 'inventory'"
+      >
+        My Inventory
+      </button>
+      <button
+        v-if="!isManageProductsRoute"
+        type="button"
+        :class="{ active: activeTab === 'inventory' }"
+        @click="activeTab = 'inventory'"
+      >
         My Inventory ({{ inventoryCount }})
       </button>
-      <button type="button" :class="{ active: activeTab === 'marketplace' }" @click="activeTab = 'marketplace'">
+      <button
+        v-if="!isManageProductsRoute"
+        type="button"
+        :class="{ active: activeTab === 'marketplace' }"
+        @click="activeTab = 'marketplace'"
+      >
         Marketplace
       </button>
-      <button type="button" :class="{ active: activeTab === 'cart' }" @click="activeTab = 'cart'">
+      <button
+        v-if="!isManageProductsRoute"
+        type="button"
+        :class="{ active: activeTab === 'cart' }"
+        @click="activeTab = 'cart'"
+      >
         My Cart ({{ totalCartQuantity() }})
       </button>
-      <button type="button" :class="{ active: activeTab === 'orders' }" @click="activeTab = 'orders'">
+      <button
+        v-if="!isManageProductsRoute"
+        type="button"
+        :class="{ active: activeTab === 'orders' }"
+        @click="activeTab = 'orders'"
+      >
         Orders ({{ orderCount }})
       </button>
     </nav>
 
-    <form v-if="activeTab === 'add-product'" class="form" @submit.prevent="submitProduct">
+    <form v-if="isManageProductsRoute && activeTab === 'add-product'" class="form" @submit.prevent="submitProduct">
       <label>
         Product Name
         <input v-model="form.productName" type="text" placeholder="Product name" required />
@@ -1101,7 +1162,7 @@ onUnmounted(() => {
       @confirm="deleteInventoryProduct"
     />
 
-    <section v-if="activeTab === 'marketplace'" class="list-panel">
+    <section v-if="!isManageProductsRoute && activeTab === 'marketplace'" class="list-panel">
       <h2>All Traders</h2>
       <p v-if="loadingMarketplace" class="muted">Loading marketplace...</p>
       <p v-else-if="!marketplace.length" class="muted">No trader data available yet.</p>
@@ -1141,7 +1202,7 @@ onUnmounted(() => {
       </div>
     </section>
 
-    <section v-if="activeTab === 'cart'" class="list-panel">
+    <section v-if="!isManageProductsRoute && activeTab === 'cart'" class="list-panel">
       <h2>My Cart ({{ totalCartQuantity() }})</h2>
       <p v-if="loadingCart" class="muted">Loading cart...</p>
       <p v-else-if="!cartItems.length" class="muted">Cart is empty.</p>
@@ -1258,7 +1319,7 @@ onUnmounted(() => {
       </div>
     </section>
 
-    <section v-if="activeTab === 'orders'" class="list-panel">
+    <section v-if="!isManageProductsRoute && activeTab === 'orders'" class="list-panel">
       <h2>My Orders ({{ filteredOrderCount }}/{{ orderCount }})</h2>
 
       <div class="order-tools">

@@ -78,6 +78,12 @@ const emit = defineEmits(['logout', 'close']);
           <span>Documents</span>
         </span>
       </router-link>
+      <router-link to="/trader/manage-products" class="inventory-link" @click="emit('close')">
+        <span class="nav-main">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v3H4zm0 5h7v9H4zm9 0h7v9h-7z"/></svg>
+          <span>Manage Products</span>
+        </span>
+      </router-link>
       <router-link to="/trader/manage-orders" class="inventory-link" @click="emit('close')">
         <span class="nav-main">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v2H3zm2 4h14v10H5zm3 2v2h8v-2z"/></svg>

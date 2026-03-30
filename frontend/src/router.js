@@ -93,6 +93,7 @@ const router = createRouter({
         { path: 'dashboard', name: 'trader-dashboard', component: TraderHomePage },
         { path: 'profile', name: 'trader-profile', component: TraderProfilePage },
         { path: 'marketplace', name: 'trader-marketplace', component: TraderMarketplacePage },
+        { path: 'manage-products', name: 'trader-manage-products', component: TraderMarketplacePage },
         { path: 'inventory', name: 'trader-inventory', component: TraderInventoryPage },
         { path: 'manage-orders', name: 'trader-manage-orders', component: TraderManageOrdersPage },
         { path: 'documents', name: 'trader-documents', component: TraderDocumentsPage },
