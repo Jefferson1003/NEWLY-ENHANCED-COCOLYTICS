@@ -18,7 +18,7 @@ const totalStocks = computed(() => {
 });
 
 const lowStockCount = computed(() => {
-  return products.value.filter((product) => Number(product.stockQuantity || 0) < 20).length;
+  return products.value.filter((product) => Number(product.stockQuantity || 0) <= 20).length;
 });
 
 const outOfStockCount = computed(() => {
@@ -194,7 +194,7 @@ function formatCurrency(value) {
 
 const stockHealth = computed(() => {
   if (!products.value.length) return 0;
-  const safeCount = products.value.filter((product) => Number(product.stockQuantity || 0) >= 20).length;
+  const safeCount = products.value.filter((product) => Number(product.stockQuantity || 0) > 20).length;
   return Math.round((safeCount / products.value.length) * 100);
 });
 

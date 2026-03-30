@@ -202,7 +202,7 @@ async function loadLowStockCount() {
   try {
     const data = await fetchTraderProducts();
     const products = data.products || [];
-    lowStockCount.value = products.filter((product) => Number(product.stockQuantity || 0) < 20).length;
+    lowStockCount.value = products.filter((product) => Number(product.stockQuantity || 0) <= 20).length;
   } catch {
     lowStockCount.value = 0;
   }
