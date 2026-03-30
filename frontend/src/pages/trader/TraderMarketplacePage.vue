@@ -1,6 +1,7 @@
 <script setup>
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import ConfirmationModal from '../../components/ConfirmationModal.vue';
 import {
   cancelMyOrder,
   createTraderProduct,
@@ -11,6 +12,7 @@ import {
   markMyOrderReceived,
   placeMyOrder,
   removeCartItem,
+  removeTraderProduct,
   updateTraderProduct,
   updateCartItemQuantity as updateCartItemQuantityApi,
 } from '../../services/api';
@@ -20,7 +22,9 @@ import { getUser } from '../../services/session';
 
 const router = useRouter();
 const route = useRoute();
-const activeTab = ref('add-product');
+const MARKETPLACE_HUB_TABS = ['inventory', 'marketplace', 'cart', 'orders'];
+const MANAGE_PRODUCTS_TABS = ['add-product', 'inventory'];
+const activeTab = ref('marketplace');
 
 const form = reactive({
   productName: '',
@@ -48,7 +52,11 @@ const showCheckoutConfirmModal = ref(false);
 const showProductEditModal = ref(false);
 const showCancelOrderModal = ref(false);
 const showReceiveRatingModal = ref(false);
+const showDeleteProductConfirmModal = ref(false);
+const checkoutPaymentMethod = ref('cash_on_delivery');
+const paymentReceiptFile = ref(null);
 const editingProduct = ref(null);
+const pendingDeleteProduct = ref(null);
 const cancellingOrderId = ref(null);
 const receivingOrderId = ref(null);
 const cancellationReason = ref('');
@@ -56,6 +64,7 @@ const receiveRating = ref(0);
 const receiveReview = ref('');
 const orderActionLoadingIds = ref([]);
 const productSaving = ref(false);
+const deletingProductId = ref(null);
 const MY_ORDERS_UPDATED_EVENT = 'cocolytics-my-orders-updated';
 const FAST_MARKETPLACE_POLL_MS = 2500;
 const editProductForm = reactive({
@@ -69,6 +78,13 @@ const editProductForm = reactive({
 
 const orderCount = computed(() => orders.value.length);
 const inventoryCount = computed(() => products.value.length);
+const isManageProductsRoute = computed(() => String(route.name || '') === 'trader-manage-products');
+const pageTitle = computed(() => (isManageProductsRoute.value ? 'Manage Products' : 'Marketplace Hub'));
+const pageSubtitle = computed(() => (
+  isManageProductsRoute.value
+    ? 'Add new products and manage your inventory in one place.'
+    : 'Manage inventory, browse traders, shop, and track orders.'
+));
 const orderSearch = ref('');
 const orderStatusFilter = ref('all');
 
@@ -114,6 +130,10 @@ const filteredOrders = computed(() => {
 });
 
 const filteredOrderCount = computed(() => filteredOrders.value.length);
+const deleteProductConfirmMessage = computed(() => {
+  const name = String(pendingDeleteProduct.value?.productName || 'this product').trim();
+  return `Delete "${name}"? This action cannot be undone.`;
+});
 
 function isCurrentTraderId(value) {
   const parsed = Number(value);
@@ -200,6 +220,40 @@ const groupedCartByTrader = computed(() => {
 
 const selectedCartQuantity = computed(() => {
   return selectedCartItems.value.reduce((total, item) => total + Number(item.quantity || 0), 0);
+});
+
+const selectedCheckoutTraderIds = computed(() => {
+  return [...new Set(
+    selectedCartItems.value
+      .map((item) => Number(item.traderId || 0))
+      .filter((id) => Number.isInteger(id) && id > 0)
+  )];
+});
+
+const selectedCheckoutTrader = computed(() => {
+  if (selectedCheckoutTraderIds.value.length !== 1) {
+    return null;
+  }
+
+  const traderId = selectedCheckoutTraderIds.value[0];
+  return marketplace.value.find((trader) => Number(trader.traderId) === traderId) || null;
+});
+
+const needsSingleSellerForGcash = computed(() => checkoutPaymentMethod.value === 'gcash' && selectedCheckoutTraderIds.value.length !== 1);
+const isGcashAvailableForSelection = computed(() => {
+  return selectedCheckoutTraderIds.value.length === 1 && Boolean(selectedCheckoutTrader.value?.gcashQrPath);
+});
+
+const gcashUnavailableReason = computed(() => {
+  if (selectedCheckoutTraderIds.value.length !== 1) {
+    return 'Select items from one seller to continue with GCash.';
+  }
+
+  if (!selectedCheckoutTrader.value?.gcashQrPath) {
+    return 'Selected seller has no GCash receive QR configured yet.';
+  }
+
+  return '';
 });
 
 const allCartItemsSelected = computed(() => {
@@ -496,6 +550,26 @@ function closeCheckoutConfirmation() {
   showCheckoutConfirmModal.value = false;
 }
 
+function onSelectPaymentReceipt(event) {
+  const [file] = event.target.files || [];
+  paymentReceiptFile.value = file || null;
+}
+
+function downloadSelectedTraderQr() {
+  const qrPath = selectedCheckoutTrader.value?.gcashQrPath;
+  const url = toImageUrl(qrPath);
+  if (!url) {
+    return;
+  }
+
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = 'gcash-qr-code';
+  anchor.target = '_blank';
+  anchor.rel = 'noopener';
+  anchor.click();
+}
+
 async function confirmCheckoutSelection() {
   if (!selectedCartItems.value.length) {
     feedback.value = 'Please keep at least one item selected to checkout.';
@@ -638,6 +712,16 @@ function emitInventoryUpdated() {
   window.dispatchEvent(new CustomEvent('cocolytics-inventory-updated'));
 }
 
+function normalizeTabForRoute(preferredTab) {
+  const normalized = String(preferredTab || '').trim().toLowerCase();
+
+  if (isManageProductsRoute.value) {
+    return MANAGE_PRODUCTS_TABS.includes(normalized) ? normalized : 'add-product';
+  }
+
+  return MARKETPLACE_HUB_TABS.includes(normalized) ? normalized : 'marketplace';
+}
+
 async function saveEditedProduct() {
   const product = editingProduct.value;
   if (!product) return;
@@ -661,6 +745,55 @@ async function saveEditedProduct() {
     feedback.value = error.message;
   } finally {
     productSaving.value = false;
+  }
+}
+
+function isDeletingProduct(productId) {
+  return Number(deletingProductId.value) === Number(productId);
+}
+
+function openDeleteProductConfirmModal(product) {
+  const productId = Number(product?.id || 0);
+  if (!Number.isInteger(productId) || productId <= 0) {
+    feedback.value = 'Invalid product selected.';
+    return;
+  }
+
+  pendingDeleteProduct.value = product;
+  showDeleteProductConfirmModal.value = true;
+}
+
+function closeDeleteProductConfirmModal() {
+  if (deletingProductId.value !== null) {
+    return;
+  }
+
+  showDeleteProductConfirmModal.value = false;
+  pendingDeleteProduct.value = null;
+}
+
+async function deleteInventoryProduct() {
+  const product = pendingDeleteProduct.value;
+  const productId = Number(product?.id || 0);
+  if (!Number.isInteger(productId) || productId <= 0) {
+    feedback.value = 'Invalid product selected.';
+    showDeleteProductConfirmModal.value = false;
+    pendingDeleteProduct.value = null;
+    return;
+  }
+
+  deletingProductId.value = productId;
+  try {
+    await removeTraderProduct(productId);
+    feedback.value = 'Product deleted successfully.';
+    await Promise.all([loadProducts(), loadMarketplace()]);
+    emitInventoryUpdated();
+    showDeleteProductConfirmModal.value = false;
+    pendingDeleteProduct.value = null;
+  } catch (error) {
+    feedback.value = error.message;
+  } finally {
+    deletingProductId.value = null;
   }
 }
 
@@ -728,6 +861,11 @@ async function loadOrders(options = {}) {
 
 async function refreshActiveTabData() {
   const active = String(activeTab.value || '').trim().toLowerCase();
+
+  if (active === 'add-product') {
+    await loadProducts({ silent: true });
+    return;
+  }
 
   if (active === 'inventory') {
     await loadProducts({ silent: true });
@@ -839,6 +977,23 @@ async function checkoutCart() {
     return false;
   }
 
+  if (checkoutPaymentMethod.value === 'gcash') {
+    if (selectedCheckoutTraderIds.value.length !== 1) {
+      feedback.value = 'GCash checkout currently supports one seller per checkout.';
+      return false;
+    }
+
+    if (!selectedCheckoutTrader.value?.gcashQrPath) {
+      feedback.value = 'Selected seller has no GCash QR configured yet.';
+      return false;
+    }
+
+    if (!paymentReceiptFile.value) {
+      feedback.value = 'Please upload your GCash payment receipt.';
+      return false;
+    }
+  }
+
   try {
     await placeMyOrder({
       fullName: address.fullName,
@@ -848,7 +1003,8 @@ async function checkoutCart() {
       provinceName: address.provinceName,
       cityName: address.cityName,
       barangayName: address.barangayName,
-      paymentMethod: 'cash_on_delivery',
+      paymentMethod: checkoutPaymentMethod.value,
+      paymentReceiptImage: paymentReceiptFile.value,
       deliveryNotes: address.deliveryNotes || '',
       selectedCartItemIds: selectedCartItemIds.value,
     });
@@ -856,6 +1012,8 @@ async function checkoutCart() {
     feedback.value = 'Order placed successfully.';
     await Promise.all([loadCart(), loadOrders(), loadMarketplace(), loadProducts()]);
     activeTab.value = 'orders';
+    checkoutPaymentMethod.value = 'cash_on_delivery';
+    paymentReceiptFile.value = null;
     return true;
   } catch (error) {
     feedback.value = error.message;
@@ -885,10 +1043,9 @@ async function submitProduct() {
 }
 
 onMounted(async () => {
-  const requestedTab = String(route.query.tab || '').trim().toLowerCase();
-  if (requestedTab === 'cart') {
-    activeTab.value = 'cart';
-  }
+  checkoutPaymentMethod.value = 'cash_on_delivery';
+  paymentReceiptFile.value = null;
+  activeTab.value = normalizeTabForRoute(route.query.tab);
 
   if (String(route.query.addressSaved || '') === '1') {
     feedback.value = 'Address saved successfully.';
@@ -929,35 +1086,87 @@ onMounted(async () => {
 onUnmounted(() => {
   stopMarketplaceRealtimePolling();
 });
+
+watch(
+  () => route.name,
+  () => {
+    activeTab.value = normalizeTabForRoute(activeTab.value);
+  }
+);
+
+watch(checkoutPaymentMethod, (value) => {
+  if (value !== 'gcash') {
+    paymentReceiptFile.value = null;
+  }
+});
+
+watch(isGcashAvailableForSelection, (isAvailable) => {
+  if (!isAvailable && checkoutPaymentMethod.value === 'gcash') {
+    checkoutPaymentMethod.value = 'cash_on_delivery';
+  }
+});
 </script>
 
 <template>
   <section class="page">
     <header class="head">
       <p class="kicker">Trader Marketplace</p>
-      <h1>Marketplace Hub</h1>
-      <p class="sub">Manage inventory, browse traders, shop, and track orders.</p>
+      <h1>{{ pageTitle }}</h1>
+      <p class="sub">{{ pageSubtitle }}</p>
     </header>
 
     <nav class="tabs">
-      <button type="button" :class="{ active: activeTab === 'add-product' }" @click="activeTab = 'add-product'">
+      <button
+        v-if="isManageProductsRoute"
+        type="button"
+        :class="{ active: activeTab === 'add-product' }"
+        @click="activeTab = 'add-product'"
+      >
         Add Product
       </button>
-      <button type="button" :class="{ active: activeTab === 'inventory' }" @click="activeTab = 'inventory'">
+      <button
+        v-if="isManageProductsRoute"
+        type="button"
+        :class="{ active: activeTab === 'inventory' }"
+        @click="activeTab = 'inventory'"
+      >
+        My Inventory
+      </button>
+      <button
+        v-if="!isManageProductsRoute"
+        type="button"
+        :class="{ active: activeTab === 'inventory' }"
+        @click="activeTab = 'inventory'"
+      >
         My Inventory ({{ inventoryCount }})
       </button>
-      <button type="button" :class="{ active: activeTab === 'marketplace' }" @click="activeTab = 'marketplace'">
+      <button
+        v-if="!isManageProductsRoute"
+        type="button"
+        :class="{ active: activeTab === 'marketplace' }"
+        @click="activeTab = 'marketplace'"
+      >
         Marketplace
       </button>
-      <button type="button" :class="{ active: activeTab === 'cart' }" @click="activeTab = 'cart'">
+      <button
+        v-if="!isManageProductsRoute"
+        type="button"
+        :class="{ active: activeTab === 'cart' }"
+        @click="activeTab = 'cart'"
+      >
         My Cart ({{ totalCartQuantity() }})
       </button>
-      <button type="button" :class="{ active: activeTab === 'orders' }" @click="activeTab = 'orders'">
+      <button
+        v-if="!isManageProductsRoute"
+        type="button"
+        :class="{ active: activeTab === 'orders' }"
+        @click="activeTab = 'orders'"
+      >
         Orders ({{ orderCount }})
       </button>
     </nav>
 
-    <form v-if="activeTab === 'add-product'" class="form" @submit.prevent="submitProduct">
+    <form v-if="isManageProductsRoute && activeTab === 'add-product'" class="form" @submit.prevent="submitProduct">
       <label>
         Product Name
         <input v-model="form.productName" type="text" placeholder="Product name" required />
@@ -1016,13 +1225,34 @@ onUnmounted(() => {
             <p>Length: {{ product.lengthCm ?? 'N/A' }} cm</p>
             <p>Price: PHP {{ Number(product.productPrice || 0).toFixed(2) }}</p>
             <p>Stock: {{ product.stockQuantity }}</p>
-            <button type="button" class="mini-btn" @click.stop="openEditProductModal(product)">Edit Product</button>
+            <div class="inventory-actions">
+              <button type="button" class="mini-btn" @click.stop="openEditProductModal(product)">Edit Product</button>
+              <button
+                type="button"
+                class="mini-btn danger"
+                :disabled="isDeletingProduct(product.id)"
+                @click.stop="openDeleteProductConfirmModal(product)"
+              >
+                {{ isDeletingProduct(product.id) ? 'Deleting...' : 'Delete' }}
+              </button>
+            </div>
           </div>
         </article>
       </div>
     </section>
 
-    <section v-if="activeTab === 'marketplace'" class="list-panel">
+    <ConfirmationModal
+      :visible="showDeleteProductConfirmModal"
+      title="Delete Product"
+      :message="deleteProductConfirmMessage"
+      :confirm-label="deletingProductId !== null ? 'Deleting...' : 'Delete Product'"
+      cancel-label="Keep Product"
+      :danger="true"
+      @cancel="closeDeleteProductConfirmModal"
+      @confirm="deleteInventoryProduct"
+    />
+
+    <section v-if="!isManageProductsRoute && activeTab === 'marketplace'" class="list-panel">
       <h2>All Traders</h2>
       <p v-if="loadingMarketplace" class="muted">Loading marketplace...</p>
       <p v-else-if="!marketplace.length" class="muted">No trader data available yet.</p>
@@ -1062,7 +1292,7 @@ onUnmounted(() => {
       </div>
     </section>
 
-    <section v-if="activeTab === 'cart'" class="list-panel">
+    <section v-if="!isManageProductsRoute && activeTab === 'cart'" class="list-panel">
       <h2>My Cart ({{ totalCartQuantity() }})</h2>
       <p v-if="loadingCart" class="muted">Loading cart...</p>
       <p v-else-if="!cartItems.length" class="muted">Cart is empty.</p>
@@ -1088,7 +1318,7 @@ onUnmounted(() => {
             {{ currentAddress.regionName || 'No region' }}
           </p>
           <p>Delivery Notes: {{ currentAddress.deliveryNotes || 'None' }}</p>
-          <p>Payment: Cash on Delivery</p>
+          <p>Payment: {{ checkoutPaymentMethod === 'gcash' ? 'GCash' : 'Cash on Delivery' }}</p>
         </div>
 
         <div class="cart-groups">
@@ -1179,7 +1409,7 @@ onUnmounted(() => {
       </div>
     </section>
 
-    <section v-if="activeTab === 'orders'" class="list-panel">
+    <section v-if="!isManageProductsRoute && activeTab === 'orders'" class="list-panel">
       <h2>My Orders ({{ filteredOrderCount }}/{{ orderCount }})</h2>
 
       <div class="order-tools">
@@ -1354,6 +1584,53 @@ onUnmounted(() => {
         </div>
 
         <footer class="modal-actions">
+          <div class="payment-method-block">
+            <p class="payment-method-title">Payment Method</p>
+
+            <div class="payment-method-options" role="group" aria-label="Payment method">
+              <button
+                type="button"
+                class="payment-option"
+                :class="{ active: checkoutPaymentMethod === 'cash_on_delivery' }"
+                @click="checkoutPaymentMethod = 'cash_on_delivery'"
+              >
+                Cash on Delivery
+              </button>
+              <button
+                type="button"
+                class="payment-option"
+                :class="{ active: checkoutPaymentMethod === 'gcash' }"
+                :disabled="!isGcashAvailableForSelection"
+                @click="checkoutPaymentMethod = 'gcash'"
+              >
+                GCash
+              </button>
+            </div>
+
+            <p v-if="!isGcashAvailableForSelection" class="muted">
+              {{ gcashUnavailableReason }}
+            </p>
+
+            <div v-if="checkoutPaymentMethod === 'gcash' && isGcashAvailableForSelection" class="gcash-box">
+              <p class="meta-line">Seller: {{ selectedCheckoutTrader?.name || 'Trader' }}</p>
+              <img
+                v-if="selectedCheckoutTrader?.gcashQrPath"
+                :src="toImageUrl(selectedCheckoutTrader.gcashQrPath)"
+                alt="Seller GCash QR"
+                class="gcash-qr-preview"
+              />
+              <p v-else class="muted">Seller has no GCash QR configured yet.</p>
+              <button v-if="selectedCheckoutTrader?.gcashQrPath" type="button" class="mini-btn" @click="downloadSelectedTraderQr">
+                Download QR
+              </button>
+
+              <label class="payment-method-label">
+                Upload GCash Receipt
+                <input type="file" accept="image/*" @change="onSelectPaymentReceipt" />
+              </label>
+            </div>
+          </div>
+
           <p>
             Selected Items: {{ selectedCartItems.length }} | Total Quantity: {{ selectedCartQuantity }} |
             Total Amount: {{ formatCurrency(selectedCartAmount) }}
@@ -1361,7 +1638,7 @@ onUnmounted(() => {
           <button
             type="button"
             class="checkout-btn"
-            :disabled="!selectedCartItems.length"
+            :disabled="!selectedCartItems.length || (checkoutPaymentMethod === 'gcash' && (!isGcashAvailableForSelection || !paymentReceiptFile || needsSingleSellerForGcash))"
             @click="confirmCheckoutSelection"
           >
             Confirm Checkout (Pending Seller Acceptance)
@@ -1666,6 +1943,13 @@ button:disabled {
 
 .inventory-product-content {
   min-width: 0;
+}
+
+.inventory-actions {
+  margin-top: 0.3rem;
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
 }
 
 .product-card.clickable {
@@ -2162,6 +2446,75 @@ button:disabled {
   margin: 0;
   color: #d7fff1;
   font-weight: 700;
+}
+
+.payment-method-block {
+  display: grid;
+  gap: 0.55rem;
+  width: 100%;
+}
+
+.payment-method-title {
+  margin: 0;
+  color: #d7fff1;
+  font-weight: 700;
+}
+
+.payment-method-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.payment-option {
+  border: 1px solid rgba(126, 223, 192, 0.35);
+  background: rgba(4, 28, 39, 0.62);
+  color: #dcfff2;
+  border-radius: 10px;
+  padding: 0.58rem 0.65rem;
+  font-weight: 800;
+  transition: border-color 0.2s ease, background-color 0.2s ease, opacity 0.2s ease;
+}
+
+.payment-option.active {
+  border-color: rgba(127, 225, 194, 0.78);
+  background: linear-gradient(145deg, rgba(22, 123, 97, 0.55), rgba(13, 94, 74, 0.76));
+}
+
+.payment-option:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.payment-method-label {
+  display: grid;
+  gap: 0.3rem;
+  color: #d7fff1;
+  font-weight: 700;
+}
+
+.gcash-box {
+  border: 1px solid rgba(126, 223, 192, 0.28);
+  border-radius: 12px;
+  background: rgba(4, 28, 39, 0.62);
+  padding: 0.6rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.meta-line {
+  margin: 0;
+  color: #d7fff1;
+  font-size: 0.82rem;
+}
+
+.gcash-qr-preview {
+  width: min(220px, 100%);
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  border: 1px solid rgba(126, 223, 192, 0.35);
+  border-radius: 10px;
+  background: rgba(5, 27, 37, 0.75);
 }
 
 .table-wrap {

@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
-import { fetchTraderMessageContacts, sendTraderCallSignal } from '../../services/api';
+import { fetchAdminMessageContacts, sendAdminCallSignal } from '../../services/api';
 import { toMediaUrl } from '../../services/media';
 import {
   clearOngoingCallSession,
@@ -10,7 +10,7 @@ import {
   setOngoingCallSession,
 } from '../../services/ongoingCall';
 import { getUser } from '../../services/session';
-import { ensureTraderRealtimeStream, subscribeTraderRealtime } from '../../services/traderRealtime';
+import { ensureAdminRealtimeStream, subscribeAdminRealtime } from '../../services/adminRealtime';
 
 const route = useRoute();
 const router = useRouter();
@@ -60,7 +60,7 @@ const partnerId = computed(() => {
   }
 
   const fromOngoing = Number(ongoingCallState.partnerId || 0);
-  if (ongoingCallState.active && ongoingCallState.role === 'trader' && Number.isInteger(fromOngoing) && fromOngoing > 0) {
+  if (ongoingCallState.active && ongoingCallState.role === 'admin' && Number.isInteger(fromOngoing) && fromOngoing > 0) {
     return fromOngoing;
   }
 
@@ -154,7 +154,7 @@ function clearEndRedirectTimer() {
 function scheduleEndRedirectToMessages() {
   clearEndRedirectTimer();
   endRedirectTimer = setTimeout(() => {
-    router.replace({ name: 'trader-messages', query: { traderId: String(partnerId.value || '') } });
+    router.replace({ name: 'admin-messages', query: { traderId: String(partnerId.value || '') } });
   }, 5000);
 }
 
@@ -170,7 +170,7 @@ function markCallEnded(reason = 'Call ended') {
 function openCallRoute() {
   setOngoingCallMinimized(false);
   router.replace({
-    name: 'trader-call',
+    name: 'admin-call',
     query: {
       traderId: String(partnerId.value || ''),
       mode: callMode.value,
@@ -187,7 +187,7 @@ function syncOngoingCallSession(minimized = false) {
   setOngoingCallSession({
     active: true,
     minimized,
-    role: 'trader',
+    role: 'admin',
     partnerId: partnerId.value,
     partnerName: partner.value?.name || 'Trader',
     mode: callMode.value,
@@ -493,7 +493,7 @@ async function sendSignal(signalType, payload = {}) {
   }
 
   try {
-    const data = await sendTraderCallSignal(partnerId.value, signalType, {
+    const data = await sendAdminCallSignal(partnerId.value, signalType, {
       ...payload,
       callId: callId.value,
       mode: callMode.value,
@@ -508,7 +508,7 @@ async function sendSignal(signalType, payload = {}) {
 
 async function loadPartnerInfo() {
   try {
-    const data = await fetchTraderMessageContacts();
+    const data = await fetchAdminMessageContacts();
     const contact = (data.contacts || []).find((item) => Number(item.traderId) === partnerId.value);
     if (contact) {
       partner.value = {
@@ -526,7 +526,7 @@ async function loadPartnerInfo() {
 
   partner.value = {
     id: partnerId.value,
-    name: `Trader #${partnerId.value}`,
+    name: `User #${partnerId.value}`,
     profileImagePath: '',
     isOnline: false,
     lastSeenAt: null,
@@ -656,14 +656,14 @@ async function endCall(leavePage = true) {
   clearOngoingCallSession();
 
   if (leavePage) {
-    router.replace({ name: 'trader-messages', query: { traderId: String(partnerId.value || '') } });
+    router.replace({ name: 'admin-messages', query: { traderId: String(partnerId.value || '') } });
   }
 }
 
 function minimizeCall() {
   syncOngoingCallSession(true);
   persistCallOnUnmount.value = true;
-  router.replace({ name: 'trader-messages', query: { traderId: String(partnerId.value || '') } });
+  router.replace({ name: 'admin-messages', query: { traderId: String(partnerId.value || '') } });
 }
 
 function toggleMute() {
@@ -1021,7 +1021,7 @@ function goBack() {
     return;
   }
 
-  router.replace({ name: 'trader-messages', query: { traderId: String(partnerId.value || '') } });
+  router.replace({ name: 'admin-messages', query: { traderId: String(partnerId.value || '') } });
 }
 
 function closeOngoingPrompt() {
@@ -1042,7 +1042,7 @@ async function initializeCallPage() {
 
   const isReopeningMinimized =
     ongoingCallState.active &&
-    ongoingCallState.role === 'trader' &&
+    ongoingCallState.role === 'admin' &&
     Number(ongoingCallState.partnerId || 0) === partnerId.value;
 
   if (!Number.isInteger(partnerId.value) || partnerId.value <= 0) {
@@ -1057,8 +1057,8 @@ async function initializeCallPage() {
     return;
   }
 
-  ensureTraderRealtimeStream();
-  unsubscribeCall = subscribeTraderRealtime('chat-call', (rawEvent) => {
+  ensureAdminRealtimeStream();
+  unsubscribeCall = subscribeAdminRealtime('chat-call', (rawEvent) => {
     handleCallEvent(rawEvent).catch((error) => {
       console.error('[call] event handling failed', error);
     });
@@ -1523,3 +1523,4 @@ watch(
   }
 }
 </style>
+

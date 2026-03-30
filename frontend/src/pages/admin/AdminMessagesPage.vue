@@ -2,12 +2,12 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
-  fetchMessagesWithTrader,
-  fetchTraderMessageContacts,
-  heartbeatTraderMessagePresence,
-  getTraderMessageStreamUrl,
-  sendMessageToTrader,
-  sendTraderTypingStatus,
+  fetchMessagesWithUser,
+  fetchAdminMessageContacts,
+  heartbeatAdminMessagePresence,
+  getAdminMessageStreamUrl,
+  sendMessageToUser,
+  sendAdminTypingStatus,
 } from '../../services/api';
 import { toMediaUrl } from '../../services/media';
 import { getUser } from '../../services/session';
@@ -254,8 +254,7 @@ function setPartnerTyping(partnerId, isTyping) {
     return;
   }
 
-  const currentMap = { ...typingByPartnerId.value, [parsedId]: Boolean(isTyping) };
-  typingByPartnerId.value = currentMap;
+  typingByPartnerId.value = { ...typingByPartnerId.value, [parsedId]: Boolean(isTyping) };
 
   const existingTimer = typingResetTimers.get(parsedId);
   if (existingTimer) {
@@ -301,7 +300,7 @@ function replyToName(message) {
     return 'You';
   }
 
-  return selectedContact.value?.traderName || pendingTraderName.value || 'Trader';
+  return selectedContact.value?.traderName || pendingTraderName.value || 'User';
 }
 
 function messageDeliveryLabel(message) {
@@ -385,7 +384,7 @@ async function sendTypingSignal(isTyping) {
   }
 
   try {
-    await sendTraderTypingStatus(partnerId, isTyping);
+    await sendAdminTypingStatus(partnerId, isTyping);
   } catch {
     // Typing signal failures should not interrupt chat flow.
   }
@@ -427,7 +426,7 @@ function openCallPage(mode = 'audio') {
   }
 
   router.push({
-    name: 'trader-call',
+    name: 'admin-call',
     query: {
       traderId: String(partnerId),
       mode: mode === 'video' ? 'video' : 'audio',
@@ -438,7 +437,7 @@ function openCallPage(mode = 'audio') {
 function openMessageStream() {
   closeMessageStream();
 
-  const streamUrl = getTraderMessageStreamUrl();
+  const streamUrl = getAdminMessageStreamUrl();
   if (!streamUrl) {
     return;
   }
@@ -480,7 +479,7 @@ async function selectContact(traderId) {
 
   selectedTraderId.value = parsedId;
   threadOpened.value = true;
-  router.replace({ name: 'trader-messages', query: { traderId: String(parsedId) } });
+  router.replace({ name: 'admin-messages', query: { traderId: String(parsedId) } });
   await loadMessages();
   emitMessagesUpdated();
 }
@@ -542,7 +541,7 @@ function replyPreviewName() {
 
   return Number(replyToMessage.value.senderId) === currentUserId.value
     ? 'You'
-    : selectedContact.value?.traderName || pendingTraderName.value || 'Trader';
+    : selectedContact.value?.traderName || pendingTraderName.value || 'User';
 }
 
 function resetSwipeState() {
@@ -653,7 +652,7 @@ function messageSwipeStyle(message) {
 
 async function heartbeatPresence() {
   try {
-    await heartbeatTraderMessagePresence();
+    await heartbeatAdminMessagePresence();
   } catch {
     // Presence heartbeat intentionally fails silently.
   }
@@ -712,7 +711,7 @@ function syncThreadFromRouteQuery() {
 async function loadContacts() {
   loadingContacts.value = true;
   try {
-    const data = await fetchTraderMessageContacts();
+    const data = await fetchAdminMessageContacts();
     contacts.value = data.contacts || [];
     if (contacts.value.length || !selectedTraderId.value) {
       feedback.value = '';
@@ -734,7 +733,7 @@ async function loadMessages() {
 
   loadingMessages.value = true;
   try {
-    const data = await fetchMessagesWithTrader(selectedTraderId.value);
+    const data = await fetchMessagesWithUser(selectedTraderId.value);
     const rows = Array.isArray(data?.messages)
       ? data.messages
       : Array.isArray(data?.rows)
@@ -774,7 +773,7 @@ async function sendMessage() {
 
   sending.value = true;
   try {
-    const data = await sendMessageToTrader(selectedTraderId.value, text, {
+    const data = await sendMessageToUser(selectedTraderId.value, text, {
       replyToMessageId: replyToMessage.value?.id || null,
       messageImageFile: selectedMessageImageFile.value || null,
     });
@@ -845,7 +844,7 @@ watch(selectedTraderId, async () => {
 <template>
   <section class="page">
     <header class="head">
-      <p class="kicker">Trader Messages</p>
+      <p class="kicker">Admin Messages</p>
       <h1>Messenger</h1>
       <p class="sub">Chat with all users in realtime.</p>
     </header>
@@ -963,7 +962,7 @@ watch(selectedTraderId, async () => {
               v-else-if="item.type === 'message' && Number(item.message.senderId) !== currentUserId"
               class="message-avatar"
             >
-              {{ (selectedContact?.traderName || pendingTraderName || 'T').slice(0, 1).toUpperCase() }}
+              {{ (selectedContact?.traderName || pendingTraderName || 'U').slice(0, 1).toUpperCase() }}
             </div>
             <article
               v-if="item.type === 'message'"
@@ -1714,3 +1713,4 @@ watch(selectedTraderId, async () => {
   }
 }
 </style>
+

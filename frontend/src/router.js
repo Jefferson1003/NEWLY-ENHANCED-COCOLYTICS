@@ -8,6 +8,8 @@ import AdminStaffApplicationsPage from './pages/admin/AdminStaffApplicationsPage
 import AdminArchivedUsersPage from './pages/admin/AdminArchivedUsersPage.vue';
 import ClientDashboard from './pages/client/ClientDashboard.vue';
 import ClientHomePage from './pages/client/ClientHomePage.vue';
+import ClientMessagesPage from './pages/client/ClientMessagesPage.vue';
+import ClientCallPage from './pages/client/ClientCallPage.vue';
 import ClientTermsPage from './pages/client/ClientTermsPage.vue';
 import TraderDashboard from './pages/trader/TraderDashboard.vue';
 import TraderHomePage from './pages/trader/TraderHomePage.vue';
@@ -23,6 +25,8 @@ import TraderVisitDetailPage from './pages/trader/TraderVisitDetailPage.vue';
 import TraderDocumentsPage from './pages/trader/TraderDocumentsPage.vue';
 import TraderOperationsPage from './pages/trader/TraderOperationsPage.vue';
 import AdminPaperApprovalsPage from './pages/admin/AdminPaperApprovalsPage.vue';
+import AdminMessagesPage from './pages/admin/AdminMessagesPage.vue';
+import AdminCallPage from './pages/admin/AdminCallPage.vue';
 import { getUser, isLoggedIn } from './services/session';
 
 const router = createRouter({
@@ -64,6 +68,8 @@ const router = createRouter({
           name: 'admin-paper-approvals',
           component: AdminPaperApprovalsPage,
         },
+        { path: 'messages', name: 'admin-messages', component: AdminMessagesPage },
+        { path: 'call', name: 'admin-call', component: AdminCallPage },
       ],
     },
     {
@@ -74,6 +80,8 @@ const router = createRouter({
         { path: '', redirect: { name: 'client-dashboard' } },
         { path: 'dashboard', name: 'client-dashboard', component: ClientHomePage },
         { path: 'terms', name: 'client-terms', component: ClientTermsPage },
+        { path: 'messages', name: 'client-messages', component: ClientMessagesPage },
+        { path: 'call', name: 'client-call', component: ClientCallPage },
       ],
     },
     {
@@ -85,6 +93,7 @@ const router = createRouter({
         { path: 'dashboard', name: 'trader-dashboard', component: TraderHomePage },
         { path: 'profile', name: 'trader-profile', component: TraderProfilePage },
         { path: 'marketplace', name: 'trader-marketplace', component: TraderMarketplacePage },
+        { path: 'manage-products', name: 'trader-manage-products', component: TraderMarketplacePage },
         { path: 'inventory', name: 'trader-inventory', component: TraderInventoryPage },
         { path: 'manage-orders', name: 'trader-manage-orders', component: TraderManageOrdersPage },
         { path: 'documents', name: 'trader-documents', component: TraderDocumentsPage },

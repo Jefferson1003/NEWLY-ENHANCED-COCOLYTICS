@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
-import { fetchTraderMessageContacts, sendTraderCallSignal } from '../../services/api';
+import { fetchClientMessageContacts, sendClientCallSignal } from '../../services/api';
 import { toMediaUrl } from '../../services/media';
 import {
   clearOngoingCallSession,
@@ -10,7 +10,7 @@ import {
   setOngoingCallSession,
 } from '../../services/ongoingCall';
 import { getUser } from '../../services/session';
-import { ensureTraderRealtimeStream, subscribeTraderRealtime } from '../../services/traderRealtime';
+import { ensureClientRealtimeStream, subscribeClientRealtime } from '../../services/clientRealtime';
 
 const route = useRoute();
 const router = useRouter();
@@ -60,7 +60,7 @@ const partnerId = computed(() => {
   }
 
   const fromOngoing = Number(ongoingCallState.partnerId || 0);
-  if (ongoingCallState.active && ongoingCallState.role === 'trader' && Number.isInteger(fromOngoing) && fromOngoing > 0) {
+  if (ongoingCallState.active && ongoingCallState.role === 'client' && Number.isInteger(fromOngoing) && fromOngoing > 0) {
     return fromOngoing;
   }
 
@@ -154,7 +154,7 @@ function clearEndRedirectTimer() {
 function scheduleEndRedirectToMessages() {
   clearEndRedirectTimer();
   endRedirectTimer = setTimeout(() => {
-    router.replace({ name: 'trader-messages', query: { traderId: String(partnerId.value || '') } });
+    router.replace({ name: 'client-messages', query: { traderId: String(partnerId.value || '') } });
   }, 5000);
 }
 
@@ -170,7 +170,7 @@ function markCallEnded(reason = 'Call ended') {
 function openCallRoute() {
   setOngoingCallMinimized(false);
   router.replace({
-    name: 'trader-call',
+    name: 'client-call',
     query: {
       traderId: String(partnerId.value || ''),
       mode: callMode.value,
@@ -187,9 +187,9 @@ function syncOngoingCallSession(minimized = false) {
   setOngoingCallSession({
     active: true,
     minimized,
-    role: 'trader',
+    role: 'client',
     partnerId: partnerId.value,
-    partnerName: partner.value?.name || 'Trader',
+    partnerName: partner.value?.name || 'Admin',
     mode: callMode.value,
     localStream,
     remoteStream,
@@ -493,7 +493,7 @@ async function sendSignal(signalType, payload = {}) {
   }
 
   try {
-    const data = await sendTraderCallSignal(partnerId.value, signalType, {
+    const data = await sendClientCallSignal(partnerId.value, signalType, {
       ...payload,
       callId: callId.value,
       mode: callMode.value,
@@ -508,12 +508,12 @@ async function sendSignal(signalType, payload = {}) {
 
 async function loadPartnerInfo() {
   try {
-    const data = await fetchTraderMessageContacts();
+    const data = await fetchClientMessageContacts();
     const contact = (data.contacts || []).find((item) => Number(item.traderId) === partnerId.value);
     if (contact) {
       partner.value = {
         id: Number(contact.traderId),
-        name: contact.traderName || 'Trader',
+        name: contact.traderName || 'Admin',
         profileImagePath: contact.profileImagePath || '',
         isOnline: Boolean(contact.isOnline),
         lastSeenAt: contact.lastSeenAt || null,
@@ -526,7 +526,7 @@ async function loadPartnerInfo() {
 
   partner.value = {
     id: partnerId.value,
-    name: `Trader #${partnerId.value}`,
+    name: `Admin #${partnerId.value}`,
     profileImagePath: '',
     isOnline: false,
     lastSeenAt: null,
@@ -656,14 +656,14 @@ async function endCall(leavePage = true) {
   clearOngoingCallSession();
 
   if (leavePage) {
-    router.replace({ name: 'trader-messages', query: { traderId: String(partnerId.value || '') } });
+    router.replace({ name: 'client-messages', query: { traderId: String(partnerId.value || '') } });
   }
 }
 
 function minimizeCall() {
   syncOngoingCallSession(true);
   persistCallOnUnmount.value = true;
-  router.replace({ name: 'trader-messages', query: { traderId: String(partnerId.value || '') } });
+  router.replace({ name: 'client-messages', query: { traderId: String(partnerId.value || '') } });
 }
 
 function toggleMute() {
@@ -1021,7 +1021,7 @@ function goBack() {
     return;
   }
 
-  router.replace({ name: 'trader-messages', query: { traderId: String(partnerId.value || '') } });
+  router.replace({ name: 'client-messages', query: { traderId: String(partnerId.value || '') } });
 }
 
 function closeOngoingPrompt() {
@@ -1042,7 +1042,7 @@ async function initializeCallPage() {
 
   const isReopeningMinimized =
     ongoingCallState.active &&
-    ongoingCallState.role === 'trader' &&
+    ongoingCallState.role === 'client' &&
     Number(ongoingCallState.partnerId || 0) === partnerId.value;
 
   if (!Number.isInteger(partnerId.value) || partnerId.value <= 0) {
@@ -1057,8 +1057,8 @@ async function initializeCallPage() {
     return;
   }
 
-  ensureTraderRealtimeStream();
-  unsubscribeCall = subscribeTraderRealtime('chat-call', (rawEvent) => {
+  ensureClientRealtimeStream();
+  unsubscribeCall = subscribeClientRealtime('chat-call', (rawEvent) => {
     handleCallEvent(rawEvent).catch((error) => {
       console.error('[call] event handling failed', error);
     });
@@ -1152,7 +1152,7 @@ watch(
       <button type="button" class="back-btn" @click="goBack">Back</button>
       <div class="title-wrap">
         <p class="kicker">{{ callModeLabel() }}</p>
-        <h1>{{ partner?.name || 'Trader' }}</h1>
+        <h1>{{ partner?.name || 'Admin' }}</h1>
         <p class="status">{{ callStatus }}</p>
       </div>
     </header>
@@ -1178,13 +1178,13 @@ watch(
         <img
           v-if="partner?.profileImagePath"
           :src="toMediaUrl(partner.profileImagePath)"
-          :alt="partner?.name || 'Trader'"
+          :alt="partner?.name || 'Admin'"
           class="state-avatar"
         />
         <div v-else class="state-avatar placeholder">
           {{ (partner?.name || 'T').slice(0, 1).toUpperCase() }}
         </div>
-        <p class="state-name">{{ partner?.name || 'Trader' }}</p>
+        <p class="state-name">{{ partner?.name || 'Admin' }}</p>
         <p class="state-subtitle">{{ waitingStatusLabel }}</p>
       </div>
 
@@ -1192,14 +1192,14 @@ watch(
         <img
           v-if="partner?.profileImagePath"
           :src="toMediaUrl(partner.profileImagePath)"
-          :alt="partner?.name || 'Trader'"
+          :alt="partner?.name || 'Admin'"
           class="state-avatar"
         />
         <div v-else class="state-avatar placeholder">
           {{ (partner?.name || 'T').slice(0, 1).toUpperCase() }}
         </div>
         <p class="state-kicker">{{ callModeLabel() }}</p>
-        <p class="state-name">{{ partner?.name || 'Trader' }}</p>
+        <p class="state-name">{{ partner?.name || 'Admin' }}</p>
         <p class="state-subtitle">{{ callStatus }}</p>
         <p class="state-duration">Duration {{ endedDurationLabel }}</p>
       </div>
@@ -1523,3 +1523,4 @@ watch(
   }
 }
 </style>
+

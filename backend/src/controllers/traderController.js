@@ -46,6 +46,7 @@ import {
 } from '../models/marketplaceModel.js';
 import {
   createProduct,
+  deleteProductByIdAndTraderId,
   findProductByIdAndTraderId,
   findProductsByTraderId,
   sanitizeProduct,
@@ -55,6 +56,7 @@ import {
   findUserById,
   sanitizeUser,
   updateUserLastSeenById,
+  updateTraderGcashQrById,
   updateTraderProfileById,
   updateTraderProfileImageById,
 } from '../models/userModel.js';
@@ -63,6 +65,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadsDir = path.resolve(__dirname, '../../../frontend/public/uploads/products_img');
 const profileUploadsDir = path.resolve(__dirname, '../../../frontend/public/uploads/profile_img');
+const gcashQrUploadsDir = path.resolve(__dirname, '../../../frontend/public/uploads/gcash_qr');
+const paymentReceiptUploadsDir = path.resolve(__dirname, '../../../frontend/public/uploads/payment_receipts');
 const paperUploadsDir = path.resolve(__dirname, '../../../frontend/public/uploads/paper_docs');
 const messengerUploadsDir = path.resolve(__dirname, '../../../frontend/public/uploads/messenger');
 const PRESENCE_RECENT_WINDOW_MS = 90 * 1000;
@@ -145,6 +149,52 @@ export const uploadProfileImage = multer({
   limits: { fileSize: 3 * 1024 * 1024 },
 }).single('profileImage');
 
+const gcashQrStorage = multer.diskStorage({
+  destination: async (_req, _file, cb) => {
+    try {
+      await mkdir(gcashQrUploadsDir, { recursive: true });
+      cb(null, gcashQrUploadsDir);
+    } catch (error) {
+      cb(error);
+    }
+  },
+  filename: (_req, file, cb) => {
+    const extension = path.extname(file.originalname || '').toLowerCase();
+    const safeExt = extension || '.jpg';
+    const uniqueName = `gcash-qr-${Date.now()}-${Math.round(Math.random() * 1e9)}${safeExt}`;
+    cb(null, uniqueName);
+  },
+});
+
+export const uploadGcashQrImage = multer({
+  storage: gcashQrStorage,
+  fileFilter,
+  limits: { fileSize: 4 * 1024 * 1024 },
+}).single('gcashQrImage');
+
+const paymentReceiptStorage = multer.diskStorage({
+  destination: async (_req, _file, cb) => {
+    try {
+      await mkdir(paymentReceiptUploadsDir, { recursive: true });
+      cb(null, paymentReceiptUploadsDir);
+    } catch (error) {
+      cb(error);
+    }
+  },
+  filename: (_req, file, cb) => {
+    const extension = path.extname(file.originalname || '').toLowerCase();
+    const safeExt = extension || '.jpg';
+    const uniqueName = `payment-receipt-${Date.now()}-${Math.round(Math.random() * 1e9)}${safeExt}`;
+    cb(null, uniqueName);
+  },
+});
+
+export const uploadPaymentReceiptImage = multer({
+  storage: paymentReceiptStorage,
+  fileFilter,
+  limits: { fileSize: 6 * 1024 * 1024 },
+}).single('paymentReceiptImage');
+
 const messageImageStorage = multer.diskStorage({
   destination: async (_req, _file, cb) => {
     try {
@@ -179,6 +229,7 @@ function mapMarketplaceRowsToTraders(rows) {
         name: row.profile_name || row.full_name,
         description: row.profile_description || '',
         profileImagePath: row.profile_image_path || '',
+        gcashQrPath: row.gcash_qr_path || '',
         contactNumber: row.contact_number || '',
         businessAddress: row.business_address || '',
         totalProducts: 0,
@@ -305,6 +356,46 @@ export async function updateTraderProfileImage(req, res) {
     });
   } catch {
     return res.status(500).json({ error: 'Could not update profile image.' });
+  }
+}
+
+export async function updateTraderGcashQr(req, res) {
+  if (!req.file) {
+    return res.status(400).json({ error: 'gcashQrImage file is required.' });
+  }
+
+  const qrPath = `/uploads/gcash_qr/${req.file.filename}`;
+
+  try {
+    const affectedRows = await updateTraderGcashQrById(req.auth.id, qrPath);
+    if (!affectedRows) {
+      return res.status(404).json({ error: 'Trader profile not found.' });
+    }
+
+    const updatedUser = await findUserById(req.auth.id);
+    return res.status(200).json({
+      message: 'GCash QR uploaded successfully.',
+      user: sanitizeUser(updatedUser),
+    });
+  } catch {
+    return res.status(500).json({ error: 'Could not update GCash QR.' });
+  }
+}
+
+export async function removeTraderGcashQr(req, res) {
+  try {
+    const affectedRows = await updateTraderGcashQrById(req.auth.id, null);
+    if (!affectedRows) {
+      return res.status(404).json({ error: 'Trader profile not found.' });
+    }
+
+    const updatedUser = await findUserById(req.auth.id);
+    return res.status(200).json({
+      message: 'GCash QR removed successfully.',
+      user: sanitizeUser(updatedUser),
+    });
+  } catch {
+    return res.status(500).json({ error: 'Could not remove GCash QR.' });
   }
 }
 
@@ -437,6 +528,25 @@ export async function updateProduct(req, res) {
   }
 }
 
+export async function deleteProduct(req, res) {
+  const productId = Number(req.params.id);
+
+  if (!Number.isInteger(productId) || productId <= 0) {
+    return res.status(400).json({ error: 'Invalid product ID.' });
+  }
+
+  try {
+    const affectedRows = await deleteProductByIdAndTraderId(productId, req.auth.id);
+    if (!affectedRows) {
+      return res.status(404).json({ error: 'Product not found.' });
+    }
+
+    return res.status(200).json({ message: 'Product deleted successfully.' });
+  } catch {
+    return res.status(500).json({ error: 'Could not delete product.' });
+  }
+}
+
 export async function listMarketplace(req, res) {
   try {
     const rows = await findMarketplaceRows();
@@ -566,9 +676,22 @@ export async function placeOrder(req, res) {
   const barangayName = String(req.body?.barangayName || '').trim();
   const paymentMethod = String(req.body?.paymentMethod || '').trim().toLowerCase();
   const deliveryNotes = String(req.body?.deliveryNotes || '').trim();
-  const selectedCartItemIds = Array.isArray(req.body?.selectedCartItemIds)
-    ? req.body.selectedCartItemIds
-    : [];
+  const selectedCartItemIds = (() => {
+    if (Array.isArray(req.body?.selectedCartItemIds)) {
+      return req.body.selectedCartItemIds;
+    }
+
+    if (typeof req.body?.selectedCartItemIds === 'string') {
+      try {
+        const parsed = JSON.parse(req.body.selectedCartItemIds);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+
+    return [];
+  })();
 
   if (
     !fullName ||
@@ -585,9 +708,11 @@ export async function placeOrder(req, res) {
     });
   }
 
-  if (paymentMethod && paymentMethod !== 'cash_on_delivery') {
-    return res.status(400).json({ error: 'Only cash_on_delivery payment method is supported.' });
+  if (paymentMethod && !['cash_on_delivery', 'gcash'].includes(paymentMethod)) {
+    return res.status(400).json({ error: 'paymentMethod must be cash_on_delivery or gcash.' });
   }
+
+  const normalizedPaymentMethod = paymentMethod || 'cash_on_delivery';
 
   const normalizedSelectedIds = [...new Set(
     selectedCartItemIds
@@ -602,6 +727,36 @@ export async function placeOrder(req, res) {
   const fullAddress = `${streetAddress}, ${barangayName}, ${cityName}, ${provinceName}, ${regionName}`;
 
   try {
+    if (normalizedPaymentMethod === 'gcash') {
+      const cartRows = await listCartByBuyerId(req.auth.id);
+      const selectedSet = new Set(normalizedSelectedIds);
+      const selectedRows = cartRows.filter((row) => selectedSet.has(Number(row.id)));
+
+      if (!selectedRows.length) {
+        return res.status(400).json({ error: 'No valid selected cart items were found.' });
+      }
+
+      const selectedTraderIds = [...new Set(selectedRows.map((row) => Number(row.trader_id || 0)).filter((id) => id > 0))];
+      if (selectedTraderIds.length !== 1) {
+        return res.status(400).json({
+          error: 'GCash checkout currently supports one seller per order. Please checkout per seller.',
+        });
+      }
+
+      const seller = await findUserById(selectedTraderIds[0]);
+      if (!seller || seller.role !== 'trader') {
+        return res.status(400).json({ error: 'Seller account was not found.' });
+      }
+
+      if (!seller.gcash_qr_path) {
+        return res.status(400).json({ error: 'Seller has no GCash QR configured yet.' });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: 'paymentReceiptImage is required for GCash checkout.' });
+      }
+    }
+
     const orderId = await placeOrderFromCart(req.auth.id, {
       fullName,
       contactNumber,
@@ -611,6 +766,10 @@ export async function placeOrder(req, res) {
       cityName,
       barangayName,
       fullAddress,
+      paymentMethod: normalizedPaymentMethod,
+      paymentStatus: normalizedPaymentMethod === 'gcash' ? 'to_verify' : 'not_required',
+      paymentReceiptPath: normalizedPaymentMethod === 'gcash' ? `/uploads/payment_receipts/${req.file.filename}` : null,
+      paymentSubmittedAt: normalizedPaymentMethod === 'gcash' ? new Date() : null,
       deliveryNotes,
     }, normalizedSelectedIds);
     return res.status(201).json({ message: 'Order placed successfully.', orderId });
@@ -643,6 +802,11 @@ export async function listOrders(req, res) {
           deliveryStreetAddress: row.delivery_street_address || '',
           deliveryFullAddress: row.delivery_full_address || '',
           paymentMethod: row.payment_method || 'cash_on_delivery',
+          paymentStatus: row.payment_status || 'not_required',
+          paymentReceiptPath: row.payment_receipt_path || '',
+          paymentSubmittedAt: row.payment_submitted_at || null,
+          paymentVerifiedAt: row.payment_verified_at || null,
+          paymentVerifiedBy: row.payment_verified_by || null,
           deliveryNotes: row.delivery_notes || '',
           cancellationReason: row.cancellation_reason || '',
           createdAt: row.order_created_at,
@@ -697,6 +861,11 @@ export async function listSalesOrders(req, res) {
           deliveryStreetAddress: row.delivery_street_address || '',
           deliveryFullAddress: row.delivery_full_address || '',
           paymentMethod: row.payment_method || 'cash_on_delivery',
+          paymentStatus: row.payment_status || 'not_required',
+          paymentReceiptPath: row.payment_receipt_path || '',
+          paymentSubmittedAt: row.payment_submitted_at || null,
+          paymentVerifiedAt: row.payment_verified_at || null,
+          paymentVerifiedBy: row.payment_verified_by || null,
           deliveryNotes: row.delivery_notes || '',
           cancellationReason: row.cancellation_reason || '',
           createdAt: row.order_created_at,
@@ -745,8 +914,20 @@ export async function updateSalesOrderStatus(req, res) {
 
     const currentStatus = String(currentOrder.status || '').toLowerCase();
 
+    const paymentMethod = String(currentOrder.payment_method || '').toLowerCase();
+    const paymentStatus = String(currentOrder.payment_status || '').toLowerCase();
+    const hasReceipt = Boolean(String(currentOrder.payment_receipt_path || '').trim());
+
     if (status === 'to_ship' && currentStatus !== 'pending') {
       return res.status(400).json({ error: 'Only pending orders can be accepted to to_ship.' });
+    }
+
+    if (status === 'to_ship' && paymentMethod === 'gcash') {
+      if (!hasReceipt || paymentStatus !== 'to_verify') {
+        return res.status(400).json({
+          error: 'GCash payment must be submitted first before verification.',
+        });
+      }
     }
 
     if (status === 'to_receive' && currentStatus !== 'to_ship') {

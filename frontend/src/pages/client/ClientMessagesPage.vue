@@ -2,12 +2,12 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
-  fetchMessagesWithTrader,
-  fetchTraderMessageContacts,
-  heartbeatTraderMessagePresence,
-  getTraderMessageStreamUrl,
-  sendMessageToTrader,
-  sendTraderTypingStatus,
+  fetchMessagesWithAdmin,
+  fetchClientMessageContacts,
+  heartbeatClientMessagePresence,
+  getClientMessageStreamUrl,
+  sendMessageToAdmin,
+  sendClientTypingStatus,
 } from '../../services/api';
 import { toMediaUrl } from '../../services/media';
 import { getUser } from '../../services/session';
@@ -254,8 +254,7 @@ function setPartnerTyping(partnerId, isTyping) {
     return;
   }
 
-  const currentMap = { ...typingByPartnerId.value, [parsedId]: Boolean(isTyping) };
-  typingByPartnerId.value = currentMap;
+  typingByPartnerId.value = { ...typingByPartnerId.value, [parsedId]: Boolean(isTyping) };
 
   const existingTimer = typingResetTimers.get(parsedId);
   if (existingTimer) {
@@ -385,7 +384,7 @@ async function sendTypingSignal(isTyping) {
   }
 
   try {
-    await sendTraderTypingStatus(partnerId, isTyping);
+    await sendClientTypingStatus(partnerId, isTyping);
   } catch {
     // Typing signal failures should not interrupt chat flow.
   }
@@ -427,7 +426,7 @@ function openCallPage(mode = 'audio') {
   }
 
   router.push({
-    name: 'trader-call',
+    name: 'client-call',
     query: {
       traderId: String(partnerId),
       mode: mode === 'video' ? 'video' : 'audio',
@@ -438,7 +437,7 @@ function openCallPage(mode = 'audio') {
 function openMessageStream() {
   closeMessageStream();
 
-  const streamUrl = getTraderMessageStreamUrl();
+  const streamUrl = getClientMessageStreamUrl();
   if (!streamUrl) {
     return;
   }
@@ -480,7 +479,7 @@ async function selectContact(traderId) {
 
   selectedTraderId.value = parsedId;
   threadOpened.value = true;
-  router.replace({ name: 'trader-messages', query: { traderId: String(parsedId) } });
+  router.replace({ name: 'client-messages', query: { traderId: String(parsedId) } });
   await loadMessages();
   emitMessagesUpdated();
 }
@@ -653,7 +652,7 @@ function messageSwipeStyle(message) {
 
 async function heartbeatPresence() {
   try {
-    await heartbeatTraderMessagePresence();
+    await heartbeatClientMessagePresence();
   } catch {
     // Presence heartbeat intentionally fails silently.
   }
@@ -712,7 +711,7 @@ function syncThreadFromRouteQuery() {
 async function loadContacts() {
   loadingContacts.value = true;
   try {
-    const data = await fetchTraderMessageContacts();
+    const data = await fetchClientMessageContacts();
     contacts.value = data.contacts || [];
     if (contacts.value.length || !selectedTraderId.value) {
       feedback.value = '';
@@ -734,7 +733,7 @@ async function loadMessages() {
 
   loadingMessages.value = true;
   try {
-    const data = await fetchMessagesWithTrader(selectedTraderId.value);
+    const data = await fetchMessagesWithAdmin(selectedTraderId.value);
     const rows = Array.isArray(data?.messages)
       ? data.messages
       : Array.isArray(data?.rows)
@@ -774,7 +773,7 @@ async function sendMessage() {
 
   sending.value = true;
   try {
-    const data = await sendMessageToTrader(selectedTraderId.value, text, {
+    const data = await sendMessageToAdmin(selectedTraderId.value, text, {
       replyToMessageId: replyToMessage.value?.id || null,
       messageImageFile: selectedMessageImageFile.value || null,
     });
@@ -845,7 +844,7 @@ watch(selectedTraderId, async () => {
 <template>
   <section class="page">
     <header class="head">
-      <p class="kicker">Trader Messages</p>
+      <p class="kicker">Client Messages</p>
       <h1>Messenger</h1>
       <p class="sub">Chat with all users in realtime.</p>
     </header>
@@ -1714,3 +1713,4 @@ watch(selectedTraderId, async () => {
   }
 }
 </style>
+

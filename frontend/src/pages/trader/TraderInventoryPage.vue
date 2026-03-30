@@ -18,7 +18,7 @@ const loadingModalStock = ref(false);
 const INVENTORY_UPDATED_EVENT = 'cocolytics-inventory-updated';
 
 const lowStockCount = computed(() => {
-  return products.value.filter((product) => Number(product.stockQuantity || 0) < 20).length;
+  return products.value.filter((product) => Number(product.stockQuantity || 0) <= 20).length;
 });
 
 const filteredProducts = computed(() => {
@@ -249,7 +249,7 @@ onMounted(loadProducts);
     <section class="list-panel">
       <h2>Products</h2>
       <p class="low-stock" :class="{ warning: lowStockCount > 0 }">
-        Low Stock Items (below 20): {{ lowStockCount }}
+        Low Stock Items (20 and below): {{ lowStockCount }}
       </p>
 
       <div class="filters-row">
@@ -280,7 +280,7 @@ onMounted(loadProducts);
             <h3>{{ product.productName }}</h3>
             <p class="meta">{{ product.size }} • {{ product.lengthCm ?? 'N/A' }} cm</p>
             <p class="description">{{ withLongDots(product.description || product.productDescription) }}</p>
-            <p class="stock" :class="{ warning: Number(product.stockQuantity) < 20 }">
+            <p class="stock" :class="{ warning: Number(product.stockQuantity) <= 20 }">
               Stock: {{ product.stockQuantity }}
             </p>
           </div>
