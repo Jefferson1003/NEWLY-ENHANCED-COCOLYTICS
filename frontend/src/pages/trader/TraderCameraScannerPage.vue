@@ -32,7 +32,7 @@
         </div>
       </div>
 
-      <div class="video-wrapper">
+      <div class="video-wrapper" :class="{ mirrored: mirrorPreview }">
         <video ref="videoInput" autoplay playsinline muted></video>
         <canvas ref="canvasOutput" @click="handleCalibrationClick"></canvas>
         <div class="detection-overlay" :class="{ 'overlay-active': detectionOverlayActive }"></div>
@@ -186,6 +186,7 @@ export default {
       detectionIntervalId: null,
       currentMode: 'realtime',
       isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
+      mirrorPreview: true,
 
       cameraSelectValue: 'environment',
       refWidthCm: 10,
@@ -1216,6 +1217,12 @@ video {
 
 canvas {
   z-index: 2;
+}
+
+.video-wrapper.mirrored video,
+.video-wrapper.mirrored canvas {
+  transform: scaleX(-1);
+  transform-origin: center;
 }
 
 .detection-overlay {
