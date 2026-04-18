@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { fetchTraderSalesOrders } from '../../services/api';
+import TraderCameraScannerPage from './TraderCameraScannerPage.vue';
 
 const activeFilter = ref('scanner');
 const loading = ref(false);
@@ -666,8 +667,8 @@ onMounted(loadOperationsData);
       <p v-if="feedback" class="feedback">{{ feedback }}</p>
       <p v-if="loading" class="muted">Loading operations data...</p>
 
-      <div v-if="!loading && activeFilter === 'scanner'" class="cards-grid">
-        <p class="muted">Content coming soon.</p>
+      <div v-if="!loading && activeFilter === 'scanner'" class="scanner-host">
+        <TraderCameraScannerPage />
       </div>
 
       <div v-else-if="!loading" class="reports-grid">
@@ -864,6 +865,10 @@ onMounted(loadOperationsData);
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.6rem;
+}
+
+.scanner-host {
+  margin-top: 0.8rem;
 }
 
 .operation-card {

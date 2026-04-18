@@ -117,7 +117,7 @@ const emit = defineEmits(['logout', 'close']);
           <span>Operations</span>
         </span>
       </router-link>
-      
+
       <router-link to="/trader/messages" class="inventory-link" @click="emit('close')">
         <span class="nav-main">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v11H7l-3 3V4z"/></svg>
