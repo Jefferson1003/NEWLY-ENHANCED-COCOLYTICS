@@ -40,9 +40,9 @@
       </div>
 
       <div class="camera-controls">
-        <div class="camera-selection" :class="{ 'mobile-hidden': isMobile }">
+        <div class="camera-selection">
           <label for="cameraSelect">Select Camera:</label>
-          <select id="cameraSelect" v-model="cameraSelectValue">
+          <select id="cameraSelect" v-model="cameraSelectValue" @change="onCameraSelectionChange">
             <option value="environment">Back Camera</option>
             <option value="user">Front Camera</option>
           </select>
@@ -186,7 +186,7 @@ export default {
       detectionIntervalId: null,
       currentMode: 'realtime',
       isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
-      mirrorPreview: true,
+      mirrorPreview: false,
 
       cameraSelectValue: 'environment',
       refWidthCm: 10,
@@ -298,6 +298,22 @@ export default {
       this.statusText = `Status: ${mode === 'realtime' ? 'Real-time mode' : 'Upload mode'} - Ready to start`
       this.detectionInfoText = mode === 'realtime' ? 'No tree detected' : 'No image uploaded'
       this.clearResults()
+    },
+
+    async onCameraSelectionChange() {
+      this.mirrorPreview = this.cameraSelectValue === 'user'
+
+      if (!this.stream) {
+        return
+      }
+
+      const shouldResumeDetection = this.realTimeDetection
+      this.stopCamera()
+      await this.startCamera()
+
+      if (shouldResumeDetection && !this.realTimeDetection && !this.toggleDetectBtnDisabled) {
+        this.toggleDetection()
+      }
     },
 
     triggerFileInput() {
@@ -542,6 +558,8 @@ export default {
           audio: false,
         }
 
+        this.mirrorPreview = this.cameraSelectValue === 'user'
+
         this.stream = await navigator.mediaDevices.getUserMedia(constraints)
 
         const videoInput = this.$refs.videoInput
@@ -606,9 +624,12 @@ export default {
             width: { ideal: 640 },
             height: { ideal: 480 },
             frameRate: { ideal: 15 },
+            facingMode: this.cameraSelectValue,
           },
           audio: false,
         }
+
+        this.mirrorPreview = this.cameraSelectValue === 'user'
 
         this.stream = await navigator.mediaDevices.getUserMedia(alternativeConstraints)
 
